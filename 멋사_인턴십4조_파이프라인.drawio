@@ -1,0 +1,148 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36" version="29.6.1">
+  <diagram id="pipeline1" name="Page-1">
+    <mxGraphModel dx="1580" dy="2405" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="1654" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=22;fontStyle=1;" value="강의 분석 리포트 생성 파이프라인" vertex="1">
+          <mxGeometry height="40" width="500" x="890" y="-90" as="geometry" />
+        </mxCell>
+        <mxCell id="meta" parent="1" style="rounded=1;whiteSpace=wrap;html=1;container=0;labelBackgroundColor=none;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;align=center;verticalAlign=middle;spacing=8;gradientColor=#ea6b66;" value="강의 메타데이터&lt;div&gt;(&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(31, 31, 31), rgb(210, 210, 210));&quot;&gt;metadata.csv)&lt;/span&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="84" width="280" x="1180" y="10" as="geometry" />
+        </mxCell>
+        <mxCell id="txt" parent="1" style="rounded=1;whiteSpace=wrap;html=1;container=0;labelBackgroundColor=none;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;align=center;verticalAlign=middle;spacing=8;gradientColor=#ea6b66;" value="강의 스크립트 (.txt)" vertex="1">
+          <mxGeometry height="84" width="280" x="410" y="10" as="geometry" />
+        </mxCell>
+        <mxCell id="pre" parent="1" style="rounded=1;whiteSpace=wrap;html=1;container=0;labelBackgroundColor=none;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;align=center;verticalAlign=middle;spacing=8;gradientColor=#7ea6e0;" value="전처리 모듈&lt;br&gt;• STT 노이즈 제거&lt;br&gt;• 문장 정리&lt;div&gt;• 중복/공백 제거&lt;/div&gt;" vertex="1">
+          <mxGeometry height="96" width="280" x="410" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="chunk" parent="1" style="rounded=1;whiteSpace=wrap;html=1;container=0;labelBackgroundColor=none;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;align=center;verticalAlign=middle;spacing=8;gradientColor=#7ea6e0;" value="청킹 모듈&lt;div&gt;• 강의 세그먼트 분할&lt;/div&gt;&lt;div&gt;•&amp;nbsp; chunk list 생성&lt;/div&gt;" vertex="1">
+          <mxGeometry height="84" width="280" x="780" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="nlp" parent="1" style="rounded=1;whiteSpace=wrap;html=1;container=0;labelBackgroundColor=none;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;align=center;verticalAlign=middle;spacing=8;gradientColor=#97d077;" value="NLP 분석 엔진&lt;br&gt;•&amp;nbsp; 정량 지표 분석" vertex="1">
+          <mxGeometry height="84" width="280" x="700" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="llm" parent="1" style="rounded=1;whiteSpace=wrap;html=1;container=0;labelBackgroundColor=none;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;align=center;verticalAlign=middle;spacing=8;gradientColor=#97d077;" value="LLM 분석 엔진&lt;br&gt;•&amp;nbsp; Chunk 기반 평가&lt;div&gt;• 최종 통합 평가&lt;/div&gt;" vertex="1">
+          <mxGeometry height="84" width="280" x="1300" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="merge" parent="1" style="rounded=1;whiteSpace=wrap;html=1;container=0;labelBackgroundColor=none;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;align=center;verticalAlign=middle;spacing=8;gradientColor=#7ea6e0;" value="결과 통합 모듈&lt;br&gt;(metadata + NLP + LLM)" vertex="1">
+          <mxGeometry height="84" width="280" x="1000" y="910" as="geometry" />
+        </mxCell>
+        <mxCell id="json" parent="1" style="rounded=1;whiteSpace=wrap;html=1;container=0;labelBackgroundColor=none;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;align=center;verticalAlign=middle;spacing=8;gradientColor=#ea6b66;" value="최종 분석 결과&lt;div&gt;(&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;analysis.json)&lt;/span&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="84" width="280" x="1000" y="1035" as="geometry" />
+        </mxCell>
+        <mxCell id="pdf" parent="1" style="rounded=1;whiteSpace=wrap;html=1;container=0;labelBackgroundColor=none;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;align=center;verticalAlign=middle;spacing=8;gradientColor=#97d077;" value="Report Generator&#xa;PDF 리포트 생성" vertex="1">
+          <mxGeometry height="84" width="280" x="1000" y="1160" as="geometry" />
+        </mxCell>
+        <mxCell id="sec1" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=16;fontStyle=1;fontColor=#666666;" value="INPUT" vertex="1">
+          <mxGeometry height="30" width="220" x="1664" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="sec2" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=16;fontStyle=1;fontColor=#666666;" value="PREPROCESSING" vertex="1">
+          <mxGeometry height="30" width="220" x="1624" y="357" as="geometry" />
+        </mxCell>
+        <mxCell id="sec3" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=16;fontStyle=1;fontColor=#666666;" value="ANALYSIS" vertex="1">
+          <mxGeometry height="30" width="85" x="1649" y="721" as="geometry" />
+        </mxCell>
+        <mxCell id="sec4" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=16;fontStyle=1;fontColor=#666666;" value="OUTPUT" vertex="1">
+          <mxGeometry height="30" width="220" x="1659" y="1135" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="txt" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" target="pre" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="pre" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="bv78-9GO9XHCN5a7i_Fl-5" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="bv78-9GO9XHCN5a7i_Fl-5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="nlp" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="chunk" style="rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="bv78-9GO9XHCN5a7i_Fl-4" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="bv78-9GO9XHCN5a7i_Fl-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="bv78-9GO9XHCN5a7i_Fl-3" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="nlp" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="bv78-9GO9XHCN5a7i_Fl-9" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="llm" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="bv78-9GO9XHCN5a7i_Fl-10" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1500" y="740" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="merge" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="json" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" edge="1" parent="1" source="json" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="pdf" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="bv78-9GO9XHCN5a7i_Fl-2" edge="1" parent="1" source="meta" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;" target="bv78-9GO9XHCN5a7i_Fl-1" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1070" y="174" as="sourcePoint" />
+            <mxPoint x="920" y="760" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="bv78-9GO9XHCN5a7i_Fl-1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;container=0;labelBackgroundColor=none;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;align=center;verticalAlign=middle;spacing=8;gradientColor=#7ea6e0;" value="Metadata Loader&lt;div&gt;• CSV row parsing&lt;br&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="96" width="280" x="1180" y="150" as="geometry" />
+        </mxCell>
+        <mxCell id="bv78-9GO9XHCN5a7i_Fl-3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;container=0;labelBackgroundColor=none;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;align=center;verticalAlign=middle;spacing=8;gradientColor=#ea6b66;" value="로드된 강의 메타데이터&lt;div&gt;(metadata.json)&lt;/div&gt;" vertex="1">
+          <mxGeometry height="84" width="280" x="1180" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="bv78-9GO9XHCN5a7i_Fl-4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;container=0;labelBackgroundColor=none;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;align=center;verticalAlign=middle;spacing=8;gradientColor=#ea6b66;" value="청킹된 강의 스크립트&lt;div&gt;[chunk_1, chunk_2, ...]&lt;/div&gt;" vertex="1">
+          <mxGeometry height="84" width="280" x="780" y="470" as="geometry" />
+        </mxCell>
+        <mxCell id="bv78-9GO9XHCN5a7i_Fl-5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;container=0;labelBackgroundColor=none;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;align=center;verticalAlign=middle;spacing=8;gradientColor=#ea6b66;" value="전처리된 강의 스크립트 (.txt)" vertex="1">
+          <mxGeometry height="84" width="280" x="410" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="bv78-9GO9XHCN5a7i_Fl-9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;container=0;labelBackgroundColor=none;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;align=center;verticalAlign=middle;spacing=8;gradientColor=#ea6b66;" value="&lt;div&gt;NLP 분석 결과 (.json)&lt;/div&gt;" vertex="1">
+          <mxGeometry height="84" width="280" x="700" y="760" as="geometry" />
+        </mxCell>
+        <mxCell id="bv78-9GO9XHCN5a7i_Fl-10" parent="1" style="rounded=1;whiteSpace=wrap;html=1;container=0;labelBackgroundColor=none;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;align=center;verticalAlign=middle;spacing=8;gradientColor=#ea6b66;" value="&lt;div&gt;LLM 분석 결과 (.json)&lt;/div&gt;" vertex="1">
+          <mxGeometry height="84" width="280" x="1300" y="760" as="geometry" />
+        </mxCell>
+        <mxCell id="bv78-9GO9XHCN5a7i_Fl-11" parent="1" style="rounded=1;whiteSpace=wrap;html=1;container=0;labelBackgroundColor=none;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;align=center;verticalAlign=middle;spacing=8;gradientColor=#ea6b66;" value="최종 분석 리포트&lt;div&gt;(&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;analysis.pdf)&lt;/span&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="84" width="280" x="1000" y="1290" as="geometry" />
+        </mxCell>
+        <mxCell id="bv78-9GO9XHCN5a7i_Fl-13" edge="1" parent="1" source="bv78-9GO9XHCN5a7i_Fl-4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="llm" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1020" y="590" as="sourcePoint" />
+            <mxPoint x="940" y="646" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="bv78-9GO9XHCN5a7i_Fl-15" edge="1" parent="1" source="bv78-9GO9XHCN5a7i_Fl-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="nlp" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1320" y="580" />
+              <mxPoint x="840" y="580" />
+            </Array>
+            <mxPoint x="1300" y="600" as="sourcePoint" />
+            <mxPoint x="1220" y="656" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="bv78-9GO9XHCN5a7i_Fl-17" edge="1" parent="1" source="bv78-9GO9XHCN5a7i_Fl-5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="chunk" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="690" y="430" as="sourcePoint" />
+            <mxPoint x="690" y="504" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="bv78-9GO9XHCN5a7i_Fl-18" edge="1" parent="1" source="bv78-9GO9XHCN5a7i_Fl-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" target="llm" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="810" y="570" as="sourcePoint" />
+            <mxPoint x="800" y="668" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="bv78-9GO9XHCN5a7i_Fl-19" edge="1" parent="1" source="bv78-9GO9XHCN5a7i_Fl-9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="merge" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="960" y="830" as="sourcePoint" />
+            <mxPoint x="960" y="896" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="bv78-9GO9XHCN5a7i_Fl-20" edge="1" parent="1" source="bv78-9GO9XHCN5a7i_Fl-10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="merge" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1150" y="860" as="sourcePoint" />
+            <mxPoint x="1180" y="880" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
