@@ -1,4 +1,4 @@
-# 5.1. 발화속도 적절성
+# 3.1. 발화속도 적절성
 
 import re
 import sys
@@ -49,7 +49,7 @@ class SpeechRateAnalyzer:
             # 1분 이상 침묵 제외 로직
             if last_dt is not None:
                 gap = (current_dt - last_dt).total_seconds()
-                if gap < 60:
+                if gap < 20:
                     effective_duration_seconds += gap
             
             last_dt = current_dt
