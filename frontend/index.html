@@ -1,0 +1,462 @@
+﻿<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EduInsightAI | 강의 분석 리포트</title>
+    <meta
+      name="description"
+      content="강의 스크립트와 메타데이터로 AI 강의 분석 리포트를 생성하는 EduInsightAI"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&family=Outfit:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">본문 바로가기</a>
+
+    <div class="ambient ambient--one" aria-hidden="true"></div>
+    <div class="ambient ambient--two" aria-hidden="true"></div>
+    <div class="ambient-lines" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <nav class="nav">
+        <div class="brand" aria-label="EduInsightAI">
+          <span class="brand-mark" aria-hidden="true">AI</span>
+          <span class="brand-name">EduInsightAI</span>
+        </div>
+        <div class="nav-links" role="navigation" aria-label="페이지 섹션">
+          <a href="#intro">Home</a>
+          <a href="#workflow">Features</a>
+          <a href="#summary">Report</a>
+          <a href="#download">About</a>
+        </div>
+        <button
+          class="btn btn-logo-button"
+          type="button"
+          data-scroll="input"
+          aria-label="분석 시작하기"
+        >
+          <img class="btn-logo-image" src="assets/nav-logo.svg" alt="" />
+        </button>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section id="intro" class="section hero">
+        <div class="hero-content">
+          <p class="eyebrow">AI Lecture Quality Report</p>
+          <h1>
+            AI로 분석하는<br />
+            <span>강의 품질</span> 리포트
+          </h1>
+          <p class="lead">
+            강의의 강점은 살리고, 개선 포인트는 빠르게 확인해 더 나은 수업으로
+            연결하세요.
+          </p>
+          <div class="hero-actions">
+            <button class="btn btn-primary btn-hero" type="button" data-scroll="input">
+              분석 시작하기
+            </button>
+            <a class="btn btn-ghost" href="#summary">리포트 미리보기</a>
+          </div>
+          <div class="support-tags" aria-label="지원 형식 안내">
+            <span>txt 스크립트 업로드</span>
+            <span>metadata 입력</span>
+            <span>PDF/JSON 다운로드</span>
+          </div>
+        </div>
+
+        <aside class="hero-panel" role="presentation">
+          <div class="hero-panel__header">
+            <h2>강의 품질 점수</h2>
+            <p><strong id="hero-score-value">-</strong> / 100</p>
+          </div>
+
+          <div class="hero-panel__body">
+            <div class="hero-ring" id="hero-ring" aria-hidden="true">
+              <div class="hero-ring__inner">
+                <strong id="hero-ring-score">-</strong>
+                <span>Overall</span>
+              </div>
+            </div>
+            <div class="hero-radar" aria-hidden="true">
+              <div class="hero-radar__shape"></div>
+              <ul>
+                <li>구조</li>
+                <li>전달력</li>
+                <li>상호작용</li>
+                <li>예시</li>
+                <li>명확성</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="hero-top">
+            <h3>개선 필요 항목 Top 3</h3>
+            <ol>
+              <li id="hero-top-1">분석 후 자동 제안됩니다.</li>
+              <li id="hero-top-2">분석 후 자동 제안됩니다.</li>
+              <li id="hero-top-3">분석 후 자동 제안됩니다.</li>
+            </ol>
+          </div>
+        </aside>
+      </section>
+
+      <section id="workflow" class="section">
+        <div class="section-header">
+          <h2>과학적 분석으로 강의 품질을 향상하세요</h2>
+          <p>입력부터 리포트 다운로드까지 3단계로 완료됩니다.</p>
+        </div>
+        <ol class="workflow-rail" aria-label="분석 단계">
+          <li class="workflow-card">
+            <p class="workflow-card__step">1</p>
+            <h3>스크립트 업로드</h3>
+            <p>강의 녹취 스크립트(.txt)를 업로드합니다.</p>
+          </li>
+          <li class="workflow-card">
+            <p class="workflow-card__step">2</p>
+            <h3>NLP/LLM 분석</h3>
+            <p>구조, 전달력, 상호작용 등 핵심 지표를 분석합니다.</p>
+          </li>
+          <li class="workflow-card">
+            <p class="workflow-card__step">3</p>
+            <h3>리포트 생성</h3>
+            <p>요약/상세 결과를 확인하고 PDF, JSON으로 받습니다.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="input" class="section">
+        <div class="section-header">
+          <h2>입력 영역</h2>
+          <p>강의 스크립트와 기본 메타데이터를 입력하세요.</p>
+        </div>
+
+        <form id="analysis-form" class="form-grid" autocomplete="off" novalidate>
+          <div class="form-card">
+            <h3>파일 업로드</h3>
+            <label class="field">
+              <span>강의 스크립트 txt 업로드</span>
+              <input
+                type="file"
+                id="script-file"
+                name="script_file"
+                accept=".txt"
+                required
+                aria-describedby="file-help"
+              />
+            </label>
+            <p id="file-help" class="field-help">.txt 파일만 지원합니다.</p>
+          </div>
+
+          <div class="form-card">
+            <h3>Metadata 입력</h3>
+            <div class="field-grid">
+              <label class="field">
+                <span>course_id</span>
+                <input
+                  type="text"
+                  name="course_id"
+                  placeholder="예: LEC-2026-001"
+                  required
+                  spellcheck="false"
+                />
+              </label>
+              <label class="field">
+                <span>course_name</span>
+                <input
+                  type="text"
+                  name="course_name"
+                  placeholder="예: 데이터 리터러시 입문"
+                  required
+                />
+              </label>
+              <label class="field">
+                <span>date</span>
+                <input type="date" name="date" required />
+              </label>
+              <label class="field">
+                <span>time</span>
+                <input type="time" name="time" required />
+              </label>
+              <label class="field">
+                <span>subject</span>
+                <input
+                  type="text"
+                  name="subject"
+                  placeholder="예: 확률과 통계"
+                  required
+                />
+              </label>
+              <label class="field">
+                <span>content</span>
+                <textarea
+                  name="content"
+                  rows="3"
+                  placeholder="예: 확률 분포, 기대값, 분산"
+                  required
+                ></textarea>
+              </label>
+              <label class="field">
+                <span>instructor</span>
+                <input
+                  type="text"
+                  name="instructor"
+                  placeholder="예: 김인사이트"
+                  required
+                />
+              </label>
+              <label class="field">
+                <span>sub_instructor</span>
+                <input
+                  type="text"
+                  name="sub_instructor"
+                  placeholder="예: 이조교"
+                  required
+                />
+              </label>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <section id="run" class="section">
+        <div class="section-header">
+          <h2>분석 실행 영역</h2>
+          <p>단계별 진행 상태를 실시간으로 확인할 수 있습니다.</p>
+        </div>
+        <div class="run-grid">
+          <div class="run-card">
+            <div class="run-card__header">
+              <h3>분석 시작</h3>
+              <div class="run-controls">
+                <span class="analysis-pill is-idle" id="analysis-pill">대기</span>
+                <button class="btn btn-primary" id="start-analysis" type="button">
+                  분석 시작
+                </button>
+              </div>
+            </div>
+            <p class="status-live" id="status-live" aria-live="polite">대기 중…</p>
+            <div class="progress">
+              <div class="progress-bar" id="progress-bar"></div>
+            </div>
+          </div>
+
+          <div class="run-card">
+            <h3>진행 상태</h3>
+            <ol class="status-list" id="status-list">
+              <li data-step="0">전처리 중</li>
+              <li data-step="1">청킹 중</li>
+              <li data-step="2">NLP 분석 중</li>
+              <li data-step="3">LLM 분석 중</li>
+              <li data-step="4">리포트 생성 중</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <section id="summary" class="section">
+        <div class="section-header">
+          <h2>결과 요약 영역</h2>
+          <p>완료 즉시 핵심 결과를 카드 단위로 확인하세요.</p>
+        </div>
+
+        <div class="summary-overview" id="summary-overview" data-ready="false">
+          <article class="overview-card overview-card--score">
+            <p class="overview-label">총점</p>
+            <strong id="overall-score">-</strong>
+            <p class="overview-meta">
+              <span id="overall-level">분석 전</span>
+              <span id="overall-delta">기준 대비 -</span>
+            </p>
+          </article>
+          <article class="overview-card">
+            <p class="overview-label">주의 신호</p>
+            <ul id="risk-list">
+              <li>분석 완료 후 표시됩니다.</li>
+            </ul>
+          </article>
+          <article class="overview-card">
+            <p class="overview-label">우선 실행 액션</p>
+            <p class="overview-action" id="primary-action">분석 완료 후 표시됩니다.</p>
+          </article>
+        </div>
+
+        <div class="summary-grid" id="summary-grid" data-ready="false">
+          <div class="summary-card">
+            <h3>강의 정보</h3>
+            <div class="summary-list" id="lecture-info">
+              <div>
+                <span>course_name</span>
+                <strong>분석 전…</strong>
+              </div>
+              <div>
+                <span>instructor</span>
+                <strong>분석 전…</strong>
+              </div>
+              <div>
+                <span>date / time</span>
+                <strong>분석 전…</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="summary-card">
+            <h3>카테고리별 점수</h3>
+            <div class="score-grid" id="score-grid">
+              <div class="score-item">
+                <div class="score-item__head">
+                  <span>구조</span>
+                  <strong id="score-structure">?</strong>
+                </div>
+                <div class="score-meter" role="presentation">
+                  <span class="score-meter__fill" id="meter-structure"></span>
+                </div>
+              </div>
+              <div class="score-item">
+                <div class="score-item__head">
+                  <span>전달력</span>
+                  <strong id="score-delivery">?</strong>
+                </div>
+                <div class="score-meter" role="presentation">
+                  <span class="score-meter__fill" id="meter-delivery"></span>
+                </div>
+              </div>
+              <div class="score-item">
+                <div class="score-item__head">
+                  <span>상호작용</span>
+                  <strong id="score-interaction">?</strong>
+                </div>
+                <div class="score-meter" role="presentation">
+                  <span class="score-meter__fill" id="meter-interaction"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="summary-card">
+            <h3>핵심 강점</h3>
+            <ul id="strength-list">
+              <li>분석 완료 후 표시됩니다.</li>
+            </ul>
+          </div>
+
+          <div class="summary-card">
+            <h3>개선 필요 사항</h3>
+            <ul id="weakness-list">
+              <li>분석 완료 후 표시됩니다.</li>
+            </ul>
+          </div>
+
+          <div class="summary-card">
+            <h3>추천 개선 방향</h3>
+            <ul id="recommend-list">
+              <li>분석 완료 후 표시됩니다.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="detail" class="section">
+        <div class="section-header">
+          <h2>상세 분석 영역</h2>
+          <p>토글을 열어 세부 지표와 chunk별 결과를 확인하세요.</p>
+        </div>
+
+        <div class="accordion">
+          <details open>
+            <summary>NLP 지표</summary>
+            <div class="detail-grid">
+              <div>
+                <span>반복 표현</span>
+                <strong id="metric-repeat">?</strong>
+              </div>
+              <div>
+                <span>발화 완결성</span>
+                <strong id="metric-complete">?</strong>
+              </div>
+              <div>
+                <span>발화 속도</span>
+                <strong id="metric-speed">?</strong>
+              </div>
+              <div>
+                <span>이해 확인 질문 수</span>
+                <strong id="metric-question">?</strong>
+              </div>
+            </div>
+          </details>
+
+          <details>
+            <summary>LLM 평가</summary>
+            <div class="detail-grid">
+              <div>
+                <span>강의 구조</span>
+                <strong id="llm-structure">?</strong>
+              </div>
+              <div>
+                <span>개념 설명</span>
+                <strong id="llm-concept">?</strong>
+              </div>
+              <div>
+                <span>예시/실습 연계</span>
+                <strong id="llm-practice">?</strong>
+              </div>
+              <div>
+                <span>상호작용</span>
+                <strong id="llm-interaction">?</strong>
+              </div>
+            </div>
+          </details>
+
+          <details>
+            <summary>chunk별 분석 결과</summary>
+            <div class="chunk-list" id="chunk-list">
+              <p class="empty">분석 완료 후 표시됩니다.</p>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <section id="download" class="section">
+        <div class="section-header">
+          <h2>다운로드 영역</h2>
+          <p>분석 완료 후 결과물을 즉시 다운로드할 수 있습니다.</p>
+        </div>
+
+        <div class="download-card">
+          <a
+            class="btn btn-secondary"
+            id="download-pdf"
+            href="#"
+            role="button"
+            aria-disabled="true"
+            >PDF 다운로드</a
+          >
+          <a
+            class="btn btn-secondary"
+            id="download-json"
+            href="#"
+            role="button"
+            aria-disabled="true"
+            >analysis.json 다운로드</a
+          >
+          <p class="download-note">분석 완료 후 버튼이 활성화됩니다.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>EduInsightAI · 강의 분석 리포트</p>
+    </footer>
+
+    <div class="ui-toast" id="ui-toast" role="status" aria-live="polite"></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
+
