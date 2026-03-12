@@ -114,6 +114,3 @@ if __name__ == "__main__":
 
 #실행 한번에 복붙
 # python /workspaces/NLP-internship/src/engine_NLP/clarity_speechrate.py /workspaces/NLP-internship/script/raw/2026-02-02_kdt-backendj-21th.txt
-
-
-#https://gemini.google.com/app/5c31446b7e9b2d3b?hl=ko
