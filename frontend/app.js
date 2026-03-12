@@ -24,8 +24,14 @@ const recommendList = document.getElementById("recommend-list");
 const chunkList = document.getElementById("chunk-list");
 const downloadPdf = document.getElementById("download-pdf");
 const downloadJson = document.getElementById("download-json");
-const scrollButton = document.querySelector("[data-scroll]");
+const scrollButtons = Array.from(document.querySelectorAll("[data-scroll]"));
 const uiToast = document.getElementById("ui-toast");
+const heroScoreValue = document.getElementById("hero-score-value");
+const heroRingScore = document.getElementById("hero-ring-score");
+const heroRing = document.getElementById("hero-ring");
+const heroTop1 = document.getElementById("hero-top-1");
+const heroTop2 = document.getElementById("hero-top-2");
+const heroTop3 = document.getElementById("hero-top-3");
 
 const metricRepeat = document.getElementById("metric-repeat");
 const metricComplete = document.getElementById("metric-complete");
@@ -223,6 +229,26 @@ function setScoreDisplay(labelNode, meterNode, scoreText) {
   meterNode.style.width = `${toScorePercent(scoreText)}%`;
 }
 
+function setHeroPreview(score, weaknesses = []) {
+  if (!heroScoreValue || !heroRingScore || !heroRing) return;
+
+  if (typeof score === "number") {
+    const clamped = Math.max(0, Math.min(100, score));
+    heroScoreValue.textContent = `${clamped}`;
+    heroRingScore.textContent = `${clamped}`;
+    heroRing.style.setProperty("--ring-value", `${clamped}`);
+  } else {
+    heroScoreValue.textContent = "-";
+    heroRingScore.textContent = "-";
+    heroRing.style.setProperty("--ring-value", "0");
+  }
+
+  const fallback = "분석 후 자동 제안됩니다.";
+  if (heroTop1) heroTop1.textContent = weaknesses[0] || fallback;
+  if (heroTop2) heroTop2.textContent = weaknesses[1] || fallback;
+  if (heroTop3) heroTop3.textContent = weaknesses[2] || fallback;
+}
+
 function renderList(target, values) {
   clearChildren(target);
   values.forEach((value) => {
@@ -288,6 +314,8 @@ function resetSummaryValues() {
   emptyText.className = "empty";
   emptyText.textContent = "분석 완료 후 표시됩니다.";
   chunkList.appendChild(emptyText);
+
+  setHeroPreview(null, []);
 }
 
 function setSummaryValues(data) {
@@ -321,6 +349,7 @@ function setSummaryValues(data) {
   llmInteraction.textContent = data.llm.interaction;
 
   renderChunks(data.chunks);
+  setHeroPreview(data.overall.score, data.weaknesses);
 }
 
 function buildAnalysisData(formValues, file) {
@@ -460,12 +489,16 @@ function finishAnalysis() {
   showToast("분석이 완료되어 다운로드가 활성화되었습니다.");
 }
 
-if (scrollButton) {
-  scrollButton.addEventListener("click", () => {
-    const target = document.getElementById("input");
-    if (target) {
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+if (scrollButtons.length) {
+  scrollButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const targetId = button.getAttribute("data-scroll");
+      if (!targetId) return;
+      const target = document.getElementById(targetId);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
   });
 }
 
@@ -493,4 +526,5 @@ window.addEventListener("beforeunload", (event) => {
     event.returnValue = "";
   }
 });
+
 
