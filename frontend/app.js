@@ -5,7 +5,12 @@ const statusLive = document.getElementById("status-live");
 const progressBar = document.getElementById("progress-bar");
 const summaryGrid = document.getElementById("summary-grid");
 const lectureInfo = document.getElementById("lecture-info");
-const scoreGrid = document.getElementById("score-grid");
+const scoreStructure = document.getElementById("score-structure");
+const scoreDelivery = document.getElementById("score-delivery");
+const scoreInteraction = document.getElementById("score-interaction");
+const meterStructure = document.getElementById("meter-structure");
+const meterDelivery = document.getElementById("meter-delivery");
+const meterInteraction = document.getElementById("meter-interaction");
 const strengthList = document.getElementById("strength-list");
 const weaknessList = document.getElementById("weakness-list");
 const recommendList = document.getElementById("recommend-list");
@@ -119,41 +124,71 @@ function createPdfBlob() {
   return new Blob([pdfContent], { type: "application/pdf" });
 }
 
+function toScorePercent(scoreText) {
+  const parsed = Number.parseInt(scoreText, 10);
+  if (Number.isNaN(parsed)) return 0;
+  return Math.max(0, Math.min(100, parsed));
+}
+
+function clearChildren(node) {
+  while (node.firstChild) {
+    node.removeChild(node.firstChild);
+  }
+}
+
+function appendInfoRow(container, keyText, valueText) {
+  const wrapper = document.createElement("div");
+  const key = document.createElement("span");
+  const value = document.createElement("strong");
+  key.textContent = keyText;
+  value.textContent = valueText;
+  wrapper.append(key, value);
+  container.appendChild(wrapper);
+}
+
+function setScoreDisplay(labelNode, meterNode, scoreText) {
+  labelNode.textContent = scoreText;
+  meterNode.style.width = `${toScorePercent(scoreText)}%`;
+}
+
+function renderList(target, values) {
+  clearChildren(target);
+  values.forEach((value) => {
+    const item = document.createElement("li");
+    item.textContent = value;
+    target.appendChild(item);
+  });
+}
+
+function renderChunks(chunks) {
+  clearChildren(chunkList);
+  chunks.forEach((chunk) => {
+    const wrapper = document.createElement("div");
+    const title = document.createElement("strong");
+    const summary = document.createElement("p");
+
+    wrapper.className = "chunk";
+    title.textContent = chunk.title;
+    summary.textContent = chunk.summary;
+
+    wrapper.append(title, summary);
+    chunkList.appendChild(wrapper);
+  });
+}
+
 function setSummaryValues(data) {
-  const infoHtml = `
-    <div>
-      <span>course_name</span>
-      <strong>${data.course_name}</strong>
-    </div>
-    <div>
-      <span>instructor</span>
-      <strong>${data.instructor}</strong>
-    </div>
-    <div>
-      <span>date / time</span>
-      <strong>${data.date} · ${data.time}</strong>
-    </div>
-  `;
-  lectureInfo.innerHTML = infoHtml;
+  clearChildren(lectureInfo);
+  appendInfoRow(lectureInfo, "course_name", data.course_name);
+  appendInfoRow(lectureInfo, "instructor", data.instructor);
+  appendInfoRow(lectureInfo, "date / time", `${data.date} · ${data.time}`);
 
-  scoreGrid.innerHTML = `
-    <div>
-      <span>구조</span>
-      <strong>${data.scores.structure}</strong>
-    </div>
-    <div>
-      <span>전달력</span>
-      <strong>${data.scores.delivery}</strong>
-    </div>
-    <div>
-      <span>상호작용</span>
-      <strong>${data.scores.interaction}</strong>
-    </div>
-  `;
+  setScoreDisplay(scoreStructure, meterStructure, data.scores.structure);
+  setScoreDisplay(scoreDelivery, meterDelivery, data.scores.delivery);
+  setScoreDisplay(scoreInteraction, meterInteraction, data.scores.interaction);
 
-  strengthList.innerHTML = data.strengths.map((item) => `<li>${item}</li>`).join("");
-  weaknessList.innerHTML = data.weaknesses.map((item) => `<li>${item}</li>`).join("");
-  recommendList.innerHTML = data.recommendations.map((item) => `<li>${item}</li>`).join("");
+  renderList(strengthList, data.strengths);
+  renderList(weaknessList, data.weaknesses);
+  renderList(recommendList, data.recommendations);
 
   metricRepeat.textContent = data.metrics.repeat;
   metricComplete.textContent = data.metrics.complete;
@@ -165,16 +200,7 @@ function setSummaryValues(data) {
   llmPractice.textContent = data.llm.practice;
   llmInteraction.textContent = data.llm.interaction;
 
-  chunkList.innerHTML = data.chunks
-    .map(
-      (chunk) => `
-      <div class="chunk">
-        <strong>${chunk.title}</strong>
-        <p>${chunk.summary}</p>
-      </div>
-    `
-    )
-    .join("");
+  renderChunks(data.chunks);
 }
 
 function buildAnalysisData(formValues, file) {

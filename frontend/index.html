@@ -28,6 +28,7 @@
         </div>
         <div class="nav-links" role="navigation" aria-label="페이지 섹션">
           <a href="#intro">프로젝트 소개</a>
+          <a href="#workflow">진행 흐름</a>
           <a href="#input">입력</a>
           <a href="#run">분석 실행</a>
           <a href="#summary">결과 요약</a>
@@ -64,6 +65,30 @@
           </ul>
           <div class="hero-card__pulse" aria-hidden="true"></div>
         </div>
+      </section>
+
+      <section id="workflow" class="section">
+        <div class="section-header">
+          <h2>분석 워크플로우</h2>
+          <p>입력부터 결과 다운로드까지, 3단계로 빠르게 진행됩니다.</p>
+        </div>
+        <ol class="workflow-rail" aria-label="분석 단계">
+          <li class="workflow-card">
+            <p class="workflow-card__step">STEP 01</p>
+            <h3>강의 정보 입력</h3>
+            <p>스크립트 txt 파일과 핵심 메타데이터를 입력합니다.</p>
+          </li>
+          <li class="workflow-card">
+            <p class="workflow-card__step">STEP 02</p>
+            <h3>자동 분석 실행</h3>
+            <p>NLP/LLM 단계를 거쳐 강의 품질을 구조적으로 진단합니다.</p>
+          </li>
+          <li class="workflow-card">
+            <p class="workflow-card__step">STEP 03</p>
+            <h3>리포트 확인 및 다운로드</h3>
+            <p>요약과 상세 결과를 검토하고 PDF/JSON을 내려받습니다.</p>
+          </li>
+        </ol>
       </section>
 
       <section id="input" class="section">
@@ -218,17 +243,32 @@
           <div class="summary-card">
             <h3>카테고리별 점수</h3>
             <div class="score-grid" id="score-grid">
-              <div>
-                <span>구조</span>
-                <strong>?</strong>
+              <div class="score-item">
+                <div class="score-item__head">
+                  <span>구조</span>
+                  <strong id="score-structure">?</strong>
+                </div>
+                <div class="score-meter" role="presentation">
+                  <span class="score-meter__fill" id="meter-structure"></span>
+                </div>
               </div>
-              <div>
-                <span>전달력</span>
-                <strong>?</strong>
+              <div class="score-item">
+                <div class="score-item__head">
+                  <span>전달력</span>
+                  <strong id="score-delivery">?</strong>
+                </div>
+                <div class="score-meter" role="presentation">
+                  <span class="score-meter__fill" id="meter-delivery"></span>
+                </div>
               </div>
-              <div>
-                <span>상호작용</span>
-                <strong>?</strong>
+              <div class="score-item">
+                <div class="score-item__head">
+                  <span>상호작용</span>
+                  <strong id="score-interaction">?</strong>
+                </div>
+                <div class="score-meter" role="presentation">
+                  <span class="score-meter__fill" id="meter-interaction"></span>
+                </div>
               </div>
             </div>
           </div>

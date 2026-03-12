@@ -1,17 +1,20 @@
-﻿:root {
+:root {
   color-scheme: light;
-  --bg: #0f1218;
-  --bg-soft: #131924;
-  --surface: #171f2d;
-  --surface-alt: #1d2638;
+  --bg: #0f1116;
+  --bg-soft: #161b26;
+  --surface: rgba(23, 30, 42, 0.86);
+  --surface-alt: rgba(31, 39, 54, 0.92);
+  --surface-strong: rgba(12, 18, 28, 0.88);
   --border: rgba(255, 255, 255, 0.08);
   --text: #e8eef8;
-  --text-muted: #b4c0d5;
-  --accent: #5ce1e6;
-  --accent-strong: #2f7cff;
-  --accent-warm: #f0c060;
+  --text-muted: #b6c1d0;
+  --accent: #3cd5d3;
+  --accent-strong: #4d7dff;
+  --accent-warm: #ffb454;
+  --accent-soft: rgba(60, 213, 211, 0.2);
   --danger: #ff6b6b;
-  --shadow: 0 20px 60px rgba(6, 12, 24, 0.4);
+  --shadow: 0 22px 56px rgba(5, 12, 24, 0.38);
+  --shadow-soft: 0 8px 22px rgba(5, 12, 24, 0.22);
   --radius-lg: 28px;
   --radius-md: 18px;
   --radius-sm: 12px;
@@ -36,7 +39,7 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  background: radial-gradient(circle at top, #1a2440 0%, #0e1118 55%, #0a0d12 100%);
+  background: radial-gradient(circle at 50% -16%, #223453 0%, #0f1520 46%, #0b0e14 100%);
   color: var(--text);
   font-family: var(--font-body);
   line-height: 1.6;
@@ -91,13 +94,13 @@ textarea:focus-visible {
 }
 
 .bg-orb--one {
-  background: radial-gradient(circle, rgba(92, 225, 230, 0.6), transparent 70%);
+  background: radial-gradient(circle, rgba(60, 213, 211, 0.6), transparent 70%);
   top: -120px;
   right: -100px;
 }
 
 .bg-orb--two {
-  background: radial-gradient(circle, rgba(47, 124, 255, 0.6), transparent 70%);
+  background: radial-gradient(circle, rgba(255, 180, 84, 0.52), transparent 70%);
   bottom: -120px;
   left: -80px;
   animation-delay: -6s;
@@ -121,7 +124,7 @@ textarea:focus-visible {
   position: sticky;
   top: 0;
   backdrop-filter: blur(16px);
-  background: rgba(15, 18, 24, 0.7);
+  background: rgba(12, 16, 24, 0.74);
   border-bottom: 1px solid var(--border);
   z-index: 4;
 }
@@ -149,8 +152,8 @@ textarea:focus-visible {
   width: 34px;
   height: 34px;
   border-radius: 12px;
-  background: linear-gradient(130deg, var(--accent), var(--accent-strong));
-  box-shadow: 0 8px 20px rgba(92, 225, 230, 0.4);
+  background: linear-gradient(130deg, var(--accent), var(--accent-warm));
+  box-shadow: 0 8px 20px rgba(60, 213, 211, 0.35);
 }
 
 .brand-name {
@@ -186,14 +189,14 @@ textarea:focus-visible {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  background: linear-gradient(135deg, var(--accent), var(--accent-warm));
   color: #07101c;
-  box-shadow: 0 16px 30px rgba(47, 124, 255, 0.35);
+  box-shadow: 0 16px 30px rgba(60, 213, 211, 0.28);
 }
 
 .btn-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 20px 36px rgba(47, 124, 255, 0.45);
+  box-shadow: 0 20px 36px rgba(60, 213, 211, 0.38);
 }
 
 .btn-secondary {
@@ -217,6 +220,7 @@ main {
   margin: 0 auto;
   padding: var(--space-xl) 24px 0;
   scroll-margin-top: 96px;
+  animation: fade-up 0.5s ease both;
 }
 
 .section-header {
@@ -283,8 +287,8 @@ main {
   position: relative;
   padding: 28px;
   border-radius: var(--radius-lg);
-  background: linear-gradient(160deg, rgba(29, 38, 56, 0.9), rgba(17, 24, 39, 0.9));
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(160deg, var(--surface-alt), var(--surface-strong));
+  border: 1px solid var(--border);
   box-shadow: var(--shadow);
   overflow: hidden;
 }
@@ -315,14 +319,51 @@ main {
   height: 8px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 10px rgba(92, 225, 230, 0.8);
+  box-shadow: 0 0 10px rgba(60, 213, 211, 0.8);
 }
 
 .hero-card__pulse {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at top right, rgba(92, 225, 230, 0.2), transparent 55%);
+  background: radial-gradient(circle at top right, var(--accent-soft), transparent 55%);
   pointer-events: none;
+}
+
+.workflow-rail {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.workflow-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  box-shadow: var(--shadow-soft);
+}
+
+.workflow-card__step {
+  margin: 0 0 10px;
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.workflow-card h3 {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+}
+
+.workflow-card p {
+  margin: 0;
+  color: var(--text-muted);
 }
 
 .form-grid {
@@ -332,8 +373,8 @@ main {
 }
 
 .form-card {
-  background: rgba(23, 31, 45, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 24px;
   box-shadow: var(--shadow);
@@ -357,7 +398,7 @@ main {
   width: 100%;
   border-radius: var(--radius-sm);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(12, 18, 28, 0.7);
+  background: var(--surface-strong);
   padding: 10px 12px;
   color: var(--text);
   font-family: var(--font-body);
@@ -371,8 +412,8 @@ main {
 
 .field input:focus,
 .field textarea:focus {
-  border-color: rgba(92, 225, 230, 0.7);
-  box-shadow: 0 0 0 3px rgba(92, 225, 230, 0.18);
+  border-color: rgba(60, 213, 211, 0.7);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .field-help {
@@ -394,8 +435,8 @@ main {
 }
 
 .run-card {
-  background: rgba(23, 31, 45, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 24px;
   min-width: 0;
@@ -448,8 +489,8 @@ main {
 
 .status-list li.is-active {
   color: var(--text);
-  border-color: rgba(92, 225, 230, 0.4);
-  box-shadow: 0 0 0 2px rgba(92, 225, 230, 0.1);
+  border-color: rgba(60, 213, 211, 0.45);
+  box-shadow: 0 0 0 2px rgba(60, 213, 211, 0.14);
 }
 
 .summary-grid {
@@ -459,8 +500,8 @@ main {
 }
 
 .summary-card {
-  background: rgba(23, 31, 45, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 20px;
   min-width: 0;
@@ -477,21 +518,54 @@ main {
   font-size: 0.95rem;
 }
 
-.summary-list div,
-.score-grid div {
+.summary-list div {
   display: flex;
   justify-content: space-between;
   gap: 12px;
 }
 
-.summary-list span,
-.score-grid span {
+.summary-list span {
   color: var(--text-muted);
 }
 
 .score-grid {
   display: grid;
   gap: 12px;
+}
+
+.score-item {
+  display: grid;
+  gap: 8px;
+}
+
+.score-item__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.score-item__head span {
+  color: var(--text-muted);
+}
+
+.score-item__head strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.score-meter {
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.score-meter__fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(120deg, var(--accent), var(--accent-warm));
+  transition: width 0.45s ease;
 }
 
 .summary-card ul {
@@ -513,15 +587,15 @@ main {
 }
 
 details {
-  background: rgba(23, 31, 45, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 18px 22px;
   transition: border-color 0.2s ease;
 }
 
 details[open] {
-  border-color: rgba(92, 225, 230, 0.35);
+  border-color: rgba(60, 213, 211, 0.36);
 }
 
 summary {
@@ -586,8 +660,8 @@ details[open] summary::after {
   gap: 16px;
   padding: 24px;
   border-radius: var(--radius-md);
-  background: rgba(23, 31, 45, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--surface);
+  border: 1px solid var(--border);
 }
 
 .download-note {
@@ -608,6 +682,17 @@ details[open] summary::after {
   }
   50% {
     transform: translateY(18px);
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -633,6 +718,10 @@ details[open] summary::after {
     flex-direction: column;
     align-items: flex-start;
   }
+
+  .workflow-card {
+    padding: 18px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -645,4 +734,3 @@ details[open] summary::after {
     transition-duration: 0.01ms !important;
   }
 }
-
