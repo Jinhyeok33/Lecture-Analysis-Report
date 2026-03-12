@@ -450,6 +450,46 @@ main {
   margin-bottom: 12px;
 }
 
+.run-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.analysis-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 66px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.analysis-pill.is-idle {
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.analysis-pill.is-running {
+  color: #051215;
+  background: linear-gradient(120deg, var(--accent), #8ff5ef);
+}
+
+.analysis-pill.is-done {
+  color: #0d1b0d;
+  background: linear-gradient(120deg, #7ed957, #b4f777);
+}
+
+.analysis-pill.is-error {
+  color: #2f0707;
+  background: linear-gradient(120deg, #ff8787, #ffc1c1);
+}
+
 .status-live {
   margin: 0 0 16px;
   color: var(--accent);
@@ -497,6 +537,65 @@ main {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 20px;
+}
+
+.summary-overview {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.overview-card {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 18px;
+  box-shadow: var(--shadow-soft);
+}
+
+.overview-card--score {
+  background: linear-gradient(150deg, rgba(77, 125, 255, 0.28), rgba(60, 213, 211, 0.22));
+}
+
+.overview-label {
+  margin: 0 0 10px;
+  font-size: 0.84rem;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.overview-card strong {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 5vw, 2.8rem);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-meta {
+  margin: 10px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: #e6f4ff;
+  font-size: 0.9rem;
+}
+
+.overview-card ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text);
+}
+
+.overview-action {
+  margin: 0;
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.summary-overview[data-ready="false"] .overview-card {
+  opacity: 0.72;
 }
 
 .summary-card {
@@ -648,6 +747,38 @@ details[open] summary::after {
   background: rgba(255, 255, 255, 0.04);
 }
 
+.chunk-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chunk-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.chunk-badge.is-high {
+  color: #3a2b00;
+  background: rgba(255, 186, 92, 0.95);
+}
+
+.chunk-badge.is-medium {
+  color: #00312d;
+  background: rgba(80, 229, 208, 0.94);
+}
+
+.chunk-badge.is-low {
+  color: #0d1730;
+  background: rgba(159, 190, 255, 0.94);
+}
+
 .empty {
   color: var(--text-muted);
   margin: 0;
@@ -673,6 +804,29 @@ details[open] summary::after {
   padding: 48px 24px 64px;
   text-align: center;
   color: var(--text-muted);
+}
+
+.ui-toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  max-width: 320px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(9, 14, 20, 0.9);
+  color: #e6f7f7;
+  box-shadow: var(--shadow-soft);
+  z-index: 8;
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.ui-toast.is-visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 @keyframes float {
@@ -706,12 +860,29 @@ details[open] summary::after {
     flex-wrap: wrap;
     justify-content: center;
   }
+
+  .summary-overview {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .overview-card--score {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 720px) {
   .run-card__header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .run-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .summary-overview {
+    grid-template-columns: 1fr;
   }
 
   .download-card {
@@ -721,6 +892,13 @@ details[open] summary::after {
 
   .workflow-card {
     padding: 18px;
+  }
+
+  .ui-toast {
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    max-width: unset;
   }
 }
 

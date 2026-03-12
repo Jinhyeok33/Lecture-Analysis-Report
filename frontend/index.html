@@ -193,9 +193,12 @@
           <div class="run-card">
             <div class="run-card__header">
               <h3>분석 시작</h3>
-              <button class="btn btn-primary" id="start-analysis" type="button">
-                분석 시작
-              </button>
+              <div class="run-controls">
+                <span class="analysis-pill is-idle" id="analysis-pill">대기</span>
+                <button class="btn btn-primary" id="start-analysis" type="button">
+                  분석 시작
+                </button>
+              </div>
             </div>
             <p class="status-live" id="status-live" aria-live="polite">
               대기 중…
@@ -221,6 +224,28 @@
         <div class="section-header">
           <h2>결과 요약 영역</h2>
           <p>분석 완료 즉시 요약 결과가 표시됩니다.</p>
+        </div>
+        <div class="summary-overview" id="summary-overview" data-ready="false">
+          <article class="overview-card overview-card--score">
+            <p class="overview-label">총점</p>
+            <strong id="overall-score">-</strong>
+            <p class="overview-meta">
+              <span id="overall-level">분석 전</span>
+              <span id="overall-delta">기준 대비 -</span>
+            </p>
+          </article>
+          <article class="overview-card">
+            <p class="overview-label">주의 신호</p>
+            <ul id="risk-list">
+              <li>분석 완료 후 표시됩니다.</li>
+            </ul>
+          </article>
+          <article class="overview-card">
+            <p class="overview-label">우선 실행 액션</p>
+            <p class="overview-action" id="primary-action">
+              분석 완료 후 표시됩니다.
+            </p>
+          </article>
         </div>
         <div class="summary-grid" id="summary-grid" data-ready="false">
           <div class="summary-card">
@@ -380,6 +405,8 @@
     <footer class="site-footer">
       <p>EduInsightAI · 강의 분석 리포트</p>
     </footer>
+
+    <div class="ui-toast" id="ui-toast" role="status" aria-live="polite"></div>
 
     <script src="app.js"></script>
   </body>

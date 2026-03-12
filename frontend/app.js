@@ -4,6 +4,7 @@ const statusList = Array.from(document.querySelectorAll("#status-list li"));
 const statusLive = document.getElementById("status-live");
 const progressBar = document.getElementById("progress-bar");
 const summaryGrid = document.getElementById("summary-grid");
+const summaryOverview = document.getElementById("summary-overview");
 const lectureInfo = document.getElementById("lecture-info");
 const scoreStructure = document.getElementById("score-structure");
 const scoreDelivery = document.getElementById("score-delivery");
@@ -11,6 +12,12 @@ const scoreInteraction = document.getElementById("score-interaction");
 const meterStructure = document.getElementById("meter-structure");
 const meterDelivery = document.getElementById("meter-delivery");
 const meterInteraction = document.getElementById("meter-interaction");
+const overallScore = document.getElementById("overall-score");
+const overallLevel = document.getElementById("overall-level");
+const overallDelta = document.getElementById("overall-delta");
+const riskList = document.getElementById("risk-list");
+const primaryAction = document.getElementById("primary-action");
+const analysisPill = document.getElementById("analysis-pill");
 const strengthList = document.getElementById("strength-list");
 const weaknessList = document.getElementById("weakness-list");
 const recommendList = document.getElementById("recommend-list");
@@ -18,6 +25,7 @@ const chunkList = document.getElementById("chunk-list");
 const downloadPdf = document.getElementById("download-pdf");
 const downloadJson = document.getElementById("download-json");
 const scrollButton = document.querySelector("[data-scroll]");
+const uiToast = document.getElementById("ui-toast");
 
 const metricRepeat = document.getElementById("metric-repeat");
 const metricComplete = document.getElementById("metric-complete");
@@ -40,6 +48,7 @@ let isRunning = false;
 let timerId = null;
 let pdfUrl = null;
 let jsonUrl = null;
+let toastTimer = null;
 
 function setActiveStep(index) {
   statusList.forEach((item, idx) => {
@@ -48,6 +57,39 @@ function setActiveStep(index) {
   const progress = Math.round(((index + 1) / steps.length) * 100);
   progressBar.style.width = `${progress}%`;
   statusLive.textContent = `${steps[index]}…`;
+}
+
+function setRunState(state, message) {
+  analysisPill.classList.remove("is-idle", "is-running", "is-done", "is-error");
+  if (state === "running") {
+    analysisPill.classList.add("is-running");
+    analysisPill.textContent = "진행 중";
+  } else if (state === "done") {
+    analysisPill.classList.add("is-done");
+    analysisPill.textContent = "완료";
+  } else if (state === "error") {
+    analysisPill.classList.add("is-error");
+    analysisPill.textContent = "확인 필요";
+  } else {
+    analysisPill.classList.add("is-idle");
+    analysisPill.textContent = "대기";
+  }
+
+  if (message) {
+    statusLive.textContent = message;
+  }
+}
+
+function showToast(message) {
+  if (!uiToast) return;
+  uiToast.textContent = message;
+  uiToast.classList.add("is-visible");
+  if (toastTimer) {
+    window.clearTimeout(toastTimer);
+  }
+  toastTimer = window.setTimeout(() => {
+    uiToast.classList.remove("is-visible");
+  }, 2400);
 }
 
 function disableDownloads() {
@@ -124,10 +166,40 @@ function createPdfBlob() {
   return new Blob([pdfContent], { type: "application/pdf" });
 }
 
-function toScorePercent(scoreText) {
+function extractScoreValue(scoreText) {
   const parsed = Number.parseInt(scoreText, 10);
   if (Number.isNaN(parsed)) return 0;
   return Math.max(0, Math.min(100, parsed));
+}
+
+function toScorePercent(scoreText) {
+  return extractScoreValue(scoreText);
+}
+
+function getScoreLevel(overall) {
+  if (overall >= 90) return "우수";
+  if (overall >= 80) return "양호";
+  if (overall >= 70) return "보통";
+  return "개선 필요";
+}
+
+function formatDelta(delta) {
+  if (delta > 0) return `기준 대비 +${delta}p`;
+  if (delta < 0) return `기준 대비 ${delta}p`;
+  return "기준 대비 0p";
+}
+
+function getChunkPriority(index, seed) {
+  const priority = (seed + index) % 3;
+  if (priority === 0) return "high";
+  if (priority === 1) return "medium";
+  return "low";
+}
+
+function getChunkPriorityLabel(priority) {
+  if (priority === "high") return "HIGH";
+  if (priority === "medium") return "MEDIUM";
+  return "LOW";
 }
 
 function clearChildren(node) {
@@ -164,19 +236,67 @@ function renderChunks(chunks) {
   clearChildren(chunkList);
   chunks.forEach((chunk) => {
     const wrapper = document.createElement("div");
+    const head = document.createElement("div");
     const title = document.createElement("strong");
+    const badge = document.createElement("span");
     const summary = document.createElement("p");
 
     wrapper.className = "chunk";
+    head.className = "chunk-head";
+    badge.className = `chunk-badge is-${chunk.priority}`;
     title.textContent = chunk.title;
+    badge.textContent = getChunkPriorityLabel(chunk.priority);
     summary.textContent = chunk.summary;
 
-    wrapper.append(title, summary);
+    head.append(title, badge);
+    wrapper.append(head, summary);
     chunkList.appendChild(wrapper);
   });
 }
 
+function resetSummaryValues() {
+  overallScore.textContent = "-";
+  overallLevel.textContent = "분석 전";
+  overallDelta.textContent = "기준 대비 -";
+  primaryAction.textContent = "분석 완료 후 표시됩니다.";
+
+  clearChildren(lectureInfo);
+  appendInfoRow(lectureInfo, "course_name", "분석 전…");
+  appendInfoRow(lectureInfo, "instructor", "분석 전…");
+  appendInfoRow(lectureInfo, "date / time", "분석 전…");
+
+  setScoreDisplay(scoreStructure, meterStructure, "?");
+  setScoreDisplay(scoreDelivery, meterDelivery, "?");
+  setScoreDisplay(scoreInteraction, meterInteraction, "?");
+
+  renderList(riskList, ["분석 완료 후 표시됩니다."]);
+  renderList(strengthList, ["분석 완료 후 표시됩니다."]);
+  renderList(weaknessList, ["분석 완료 후 표시됩니다."]);
+  renderList(recommendList, ["분석 완료 후 표시됩니다."]);
+
+  metricRepeat.textContent = "?";
+  metricComplete.textContent = "?";
+  metricSpeed.textContent = "?";
+  metricQuestion.textContent = "?";
+  llmStructure.textContent = "?";
+  llmConcept.textContent = "?";
+  llmPractice.textContent = "?";
+  llmInteraction.textContent = "?";
+
+  clearChildren(chunkList);
+  const emptyText = document.createElement("p");
+  emptyText.className = "empty";
+  emptyText.textContent = "분석 완료 후 표시됩니다.";
+  chunkList.appendChild(emptyText);
+}
+
 function setSummaryValues(data) {
+  overallScore.textContent = `${data.overall.score}점`;
+  overallLevel.textContent = data.overall.level;
+  overallDelta.textContent = formatDelta(data.overall.delta);
+  primaryAction.textContent = data.primary_action;
+  renderList(riskList, data.risks);
+
   clearChildren(lectureInfo);
   appendInfoRow(lectureInfo, "course_name", data.course_name);
   appendInfoRow(lectureInfo, "instructor", data.instructor);
@@ -211,27 +331,40 @@ function buildAnalysisData(formValues, file) {
     formValues.instructor.length +
     formValues.sub_instructor.length;
   const seed = seedBase + (file ? Math.round(file.size / 1024) : 12);
+  const structureScore = computeScore(seed, 3);
+  const deliveryScore = computeScore(seed, 5);
+  const interactionScore = computeScore(seed, 7);
+  const overallScoreValue = Math.round((structureScore + deliveryScore + interactionScore) / 3);
+  const recommendations = [
+    "전환 구간에 요약 문장을 추가하세요.",
+    "질문 템플릿을 고정해 상호작용을 유지하세요.",
+  ];
+  const weaknesses = [
+    "중반부 반복 표현이 다소 많습니다.",
+    "속도 변동 구간에서 집중이 약해집니다.",
+  ];
 
   return {
     ...formValues,
+    overall: {
+      score: overallScoreValue,
+      level: getScoreLevel(overallScoreValue),
+      delta: overallScoreValue - 78,
+    },
     scores: {
-      structure: `${computeScore(seed, 3)}점`,
-      delivery: `${computeScore(seed, 5)}점`,
-      interaction: `${computeScore(seed, 7)}점`,
+      structure: `${structureScore}점`,
+      delivery: `${deliveryScore}점`,
+      interaction: `${interactionScore}점`,
     },
     strengths: [
       "핵심 개념 전개가 안정적으로 이어집니다.",
       "질문 유도와 정리 멘트가 명확합니다.",
       "예시 흐름이 학습 목표와 잘 연결됩니다.",
     ],
-    weaknesses: [
-      "중반부 반복 표현이 다소 많습니다.",
-      "속도 변동 구간에서 집중이 약해집니다.",
-    ],
-    recommendations: [
-      "전환 구간에 요약 문장을 추가하세요.",
-      "질문 템플릿을 고정해 상호작용을 유지하세요.",
-    ],
+    weaknesses,
+    risks: weaknesses,
+    primary_action: recommendations[0],
+    recommendations,
     metrics: {
       repeat: `${(seed % 6) + 3}회`,
       complete: `${computeScore(seed, 2)}%`,
@@ -246,7 +379,11 @@ function buildAnalysisData(formValues, file) {
     },
     chunks: Array.from({ length: 3 }).map((_, index) => ({
       title: `Chunk ${index + 1}`,
-      summary: "요점 정리와 예시가 연결되어 있습니다.",
+      priority: getChunkPriority(index, seed),
+      summary:
+        index % 2 === 0
+          ? "요점 정리와 예시가 연결되어 있습니다."
+          : "전개는 안정적이지만 문장 반복이 관찰됩니다.",
     })),
   };
 }
@@ -269,12 +406,17 @@ function startAnalysis() {
   if (isRunning) return;
   if (!form.checkValidity()) {
     form.reportValidity();
+    setRunState("error", "입력값을 확인해 주세요.");
+    showToast("필수 입력을 먼저 완료해 주세요.");
     return;
   }
 
   isRunning = true;
   disableDownloads();
   summaryGrid.setAttribute("data-ready", "false");
+  summaryOverview.setAttribute("data-ready", "false");
+  resetSummaryValues();
+  setRunState("running", "전처리 중…");
 
   startButton.textContent = "분석 중…";
   startButton.disabled = true;
@@ -295,10 +437,10 @@ function startAnalysis() {
 
 function finishAnalysis() {
   isRunning = false;
-  startButton.textContent = "분석 완료";
+  startButton.textContent = "다시 분석";
   startButton.disabled = false;
   progressBar.style.width = "100%";
-  statusLive.textContent = "분석 완료";
+  setRunState("done", "분석 완료");
 
   const fileInput = document.getElementById("script-file");
   const file = fileInput.files[0] || null;
@@ -306,6 +448,7 @@ function finishAnalysis() {
   const analysisData = buildAnalysisData(formValues, file);
 
   summaryGrid.setAttribute("data-ready", "true");
+  summaryOverview.setAttribute("data-ready", "true");
   setSummaryValues(analysisData);
 
   const jsonBlob = new Blob([JSON.stringify(analysisData, null, 2)], {
@@ -314,6 +457,7 @@ function finishAnalysis() {
   const pdfBlob = createPdfBlob();
 
   enableDownloads(pdfBlob, jsonBlob);
+  showToast("분석이 완료되어 다운로드가 활성화되었습니다.");
 }
 
 if (scrollButton) {
@@ -338,6 +482,10 @@ downloadJson.addEventListener("click", (event) => {
     event.preventDefault();
   }
 });
+
+disableDownloads();
+resetSummaryValues();
+setRunState("idle", "대기 중…");
 
 window.addEventListener("beforeunload", (event) => {
   if (isRunning) {
