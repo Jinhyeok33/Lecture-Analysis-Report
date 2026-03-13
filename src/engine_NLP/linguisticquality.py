@@ -1,9 +1,6 @@
 # 1. 언어표현품질 (불필요한 반복, 발화완결성, 언어일관성)
 
-import sys
-import json
 import re
-import os
 import warnings
 from collections import Counter
 from kiwipiepy import Kiwi
@@ -12,9 +9,9 @@ from kiwipiepy import Kiwi
 warnings.filterwarnings("ignore")
 
 class LanguageQualityAnalyzer:
-    def __init__(self):
-        # Kiwi 초기화 (형태소 분석 및 문장 분리 엔진)
-        self.kiwi = Kiwi()
+    def __init__(self, kiwi=None):
+        # 외부에서 넘겨받은 kiwi 사용
+        self.kiwi = kiwi
         
         # 1. 불필요한 중복 표현 사전 (Filler Words)
         self.filler_words = [
@@ -39,6 +36,11 @@ class LanguageQualityAnalyzer:
 
     def analyze(self, text: str, file_name: str = "input_text") -> dict:
         """텍스트를 분석하여 언어 품질(중복 표현, 문장 스타일, 완성도) 결과를 반환합니다."""
+        
+        # 방어 로직: Kiwi가 없으면 자체 생성
+        if not self.kiwi:
+            self.kiwi = Kiwi()
+
         if not text or not text.strip():
             return {
                 "lecture_id": file_name,
@@ -117,37 +119,3 @@ class LanguageQualityAnalyzer:
                 }
             }
         }
-
-# --- 터미널 실행을 위한 메인 코드 ---
-if __name__ == "__main__":
-    analyzer = LanguageQualityAnalyzer()
-    
-    # 1. 명령행 인자로 파일 경로를 받았을 경우
-    if len(sys.argv) > 1:
-        file_path = sys.argv[1]
-        file_name = os.path.basename(file_path)
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                input_text = f.read()
-        except UnicodeDecodeError:
-            with open(file_path, 'r', encoding='cp949') as f:
-                input_text = f.read()
-        except Exception as e:
-            print(f"파일을 읽는 중 오류 발생: {e}")
-            sys.exit(1)
-        print(f"--- '{file_name}' 분석 결과 ---")
-    else:
-        # 2. 인자가 없을 경우 기본 예시 데이터 사용
-        file_name = "sample_script"
-        print("--- 입력 인자가 없어 예시 스크립트를 분석합니다 ---")
-        input_text = """
-<09:11:17> b54f46b0: 여러분 오늘 수업 진행하도록 하겠습니다.
-<09:11:45> b54f46b0: 저희가 오늘 이제 수업할 내용은 자바 아이오 패키지입니다. 사실 좀 복잡해요.
-<09:11:57> b54f46b0: 일단은 여기 보시면 다양한 섹션으로 구현할 수가 있는데 여기 보세요.
-<12:59:50> b54f46b0: 오전 수업은 여기까지 하고 식사하고 오세요.
-<02:00:10> b54f46b0: 자, 오후 수업 시작해 보겠습니다. 이거는 뭐가 좋다.
-        """
-
-    # 분석 실행 및 결과 출력
-    analysis_result = analyzer.analyze(input_text, file_name)
-    print(json.dumps(analysis_result, indent=2, ensure_ascii=False))

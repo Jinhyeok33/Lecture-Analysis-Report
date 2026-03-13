@@ -209,3 +209,10 @@ __marimo__/
 
 
 # 특정 작업 폴더 제외
+/workspaces/NLP-internship/src/engine_NLP/temp/
+/workspaces/NLP-internship/src/module_chunking
+/workspaces/NLP-internship/src/module_preprocess
+# .gitignore 파일 내용 수정 제안
+src/engine_NLP/temp/
+src/module_chunking/
+src/module_preprocess/

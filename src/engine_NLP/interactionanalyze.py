@@ -1,12 +1,11 @@
 import re
-import json
-import sys
 from datetime import datetime, timedelta
 from kiwipiepy import Kiwi
 
 class InteractionAnalyzer:
-    def __init__(self, min_threshold=3):
-        self.kiwi = Kiwi()
+    def __init__(self, kiwi=None, min_threshold=3):
+        # 외부에서 넘겨받은 kiwi 사용
+        self.kiwi = kiwi
         self.min_threshold = min_threshold
         # 확장된 핵심 어근 세트
         self.target_roots = {
@@ -29,6 +28,9 @@ class InteractionAnalyzer:
 
     def _is_understanding_question(self, text):
         """Kiwi를 사용하여 의문형 어미와 핵심 키워드 조합 분석"""
+        # 방어 로직
+        if not self.kiwi: return False
+        
         tokens = self.kiwi.tokenize(text)
         has_target_root = False
         is_question_form = False
@@ -42,6 +44,10 @@ class InteractionAnalyzer:
         return has_target_root and is_question_form
 
     def analyze(self, script_text):
+        # 방어 로직: Kiwi가 없으면 자체 생성
+        if not self.kiwi:
+            self.kiwi = Kiwi()
+
         lines = [l for l in script_text.strip().split('\n') if l.strip()]
         if not lines:
             return {"error": "분석할 데이터가 없습니다."}
@@ -80,16 +86,6 @@ class InteractionAnalyzer:
         effective_duration_hours = max(effective_duration_seconds / 3600, 0.001)
         total_questions = len(interactions_effective_times)
         
-        # 분포도 계산 (절대 시간이 아닌 '유효 강의 시간'을 기준으로 3등분)
-        #distribution = {"early": 0, "mid": 0, "late": 0}
-        #total_duration = effective_duration_seconds if effective_duration_seconds > 0 else 1
-        
-        #for effective_time in interactions_effective_times:
-        #    pos = effective_time / total_duration
-        #    if pos <= 0.33: distribution["early"] += 1
-        #    elif pos <= 0.66: distribution["mid"] += 1
-        #    else: distribution["late"] += 1
-
         return {
             "interaction_metrics": {
                 "understanding_question_count": total_questions,
@@ -99,32 +95,3 @@ class InteractionAnalyzer:
             },
             #"distribution": distribution
         }
-
-# --- 터미널 실행을 위한 메인 코드 ---
-if __name__ == "__main__":
-    analyzer = InteractionAnalyzer()
-    
-    # 1. 명령행 인자로 파일 경로를 받았을 경우
-    if len(sys.argv) > 1:
-        file_path = sys.argv[1]
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                input_text = f.read()
-            print(f"--- '{file_path}' 파일을 분석합니다 ---")
-        except Exception as e:
-            print(f"파일을 읽는 중 오류 발생: {e}")
-            sys.exit(1)
-    else:
-        # 2. 인자가 없을 경우 기본 예시 데이터 사용 (12시간제 전환 및 갭 테스트용)
-        print("--- 입력 인자가 없어 예시 스크립트를 분석합니다 ---")
-        input_text = """
-<11:59:45> b54f46b0: 여러분 오늘 수업 진행하도록 하겠습니다. 알겠죠?
-<11:59:55> b54f46b0: 10초 지났습니다. 다들 이해하셨나요?
-<12:00:10> b54f46b0: 쉬는 시간 가지겠습니다.
-<01:00:10> b54f46b0: 자, 오후 수업 시작해 보겠습니다. 다들 들리시죠?
-<01:00:20> b54f46b0: 이 부분 코드가 좀 복잡한데 되셨어요?
-        """
-
-    # 분석 실행 및 결과 출력
-    analysis_result = analyzer.analyze(input_text)
-    print(json.dumps(analysis_result, indent=2, ensure_ascii=False))
