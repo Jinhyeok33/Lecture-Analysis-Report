@@ -1,0 +1,29 @@
+# 전부 무시 후 필요한 것만 예외
+/*
+!/.gitignore
+!/requirements.txt
+!/LLMEngine
+!/docs
+!/dataset
+!/dataset/강의 스크립트
+
+# LLMEngine: output·checkpoints 제외
+/LLMEngine/output/
+/LLMEngine/checkpoints/
+
+# docs: json, pipeline.jpg만 (md·pdf 제외)
+/docs/*.md
+/docs/*.pdf
+
+# dataset: 강의 스크립트만, txt 제외-각자 추가해서 사용해야 함- / dataset 나머지 제외
+/dataset/강의 스크립트/*.txt
+/dataset/mock/
+/dataset/*.csv
+/dataset/*.pdf
+/dataset/README.md
+
+# Python·OS
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
