@@ -156,6 +156,28 @@
 
           <div class="form-card">
             <h3>Metadata 입력</h3>
+            <div class="metadata-csv-upload">
+              <label class="field">
+                <span>CSV로 메타데이터 업로드 (선택)</span>
+                <input
+                  type="file"
+                  id="metadata-csv"
+                  accept=".csv"
+                  aria-describedby="csv-help"
+                />
+              </label>
+              <p id="csv-help" class="field-help">
+                CSV 헤더: course_id, course_name, date, time, subject, content, instructor, sub_instructor
+              </p>
+              <div id="csv-session-picker" class="csv-session-picker" hidden>
+                <label class="field">
+                  <span>강의 세션 선택</span>
+                  <select id="csv-session-select"></select>
+                </label>
+                <button class="btn btn-secondary csv-apply-btn" type="button" id="csv-apply">적용</button>
+              </div>
+            </div>
+            <hr class="form-divider" />
             <div class="field-grid">
               <label class="field">
                 <span>course_id</span>
@@ -182,7 +204,12 @@
               </label>
               <label class="field">
                 <span>time</span>
-                <input type="time" name="time" required />
+                <input
+                  type="text"
+                  name="time"
+                  placeholder="예: 09:00 ~ 12:00"
+                  required
+                />
               </label>
               <label class="field">
                 <span>subject</span>

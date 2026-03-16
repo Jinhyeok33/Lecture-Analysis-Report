@@ -580,6 +580,39 @@ main {
   font-size: 0.86rem;
 }
 
+.metadata-csv-upload {
+  margin-bottom: 4px;
+}
+
+.csv-session-picker {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.csv-session-picker select {
+  width: 100%;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(196, 135, 72, 0.34);
+  background: #fff;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--text);
+}
+
+.csv-apply-btn {
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  font-size: 0.92rem;
+  width: fit-content;
+}
+
+.form-divider {
+  border: none;
+  border-top: 1px solid rgba(196, 135, 72, 0.22);
+  margin: 12px 0 16px;
+}
+
 .field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
