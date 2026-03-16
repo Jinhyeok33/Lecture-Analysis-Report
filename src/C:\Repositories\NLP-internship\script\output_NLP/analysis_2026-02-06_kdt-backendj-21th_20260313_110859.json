@@ -1,0 +1,41 @@
+{
+  "report_info": {
+    "source_file": "2026-02-06_kdt-backendj-21th.txt",
+    "analysis_timestamp": "2026-03-13 11:08:59"
+  },
+  "metrics": {
+    "speech_rate": {
+      "speech_rate_wpm": 97,
+      "classification": "very_low",
+      "score": 3
+    },
+    "interaction": {
+      "understanding_question_count": 43
+    },
+    "linguistic_quality": {
+      "repeat_expressions": {
+        "그래서": 182,
+        "뭐": 117,
+        "이제": 192,
+        "좀": 119,
+        "약간": 31,
+        "일단": 78,
+        "그": 15,
+        "그러면": 73,
+        "사실": 5,
+        "어쨌든": 4,
+        "그러니까": 28,
+        "어": 21
+      },
+      "total_sentences": 2121,
+      "total_filler_count": 865,
+      "repeat_ratio": 0.4078,
+      "repeat_density": 0.0155,
+      "incomplete_sentence_ratio": 0.49,
+      "speech_style_ratio": {
+        "formal": 0.2,
+        "informal": 0.31
+      }
+    }
+  }
+}
