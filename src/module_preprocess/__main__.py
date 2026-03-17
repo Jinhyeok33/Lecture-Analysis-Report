@@ -41,7 +41,7 @@ def main():
 
     # 1. 단어 사전 업데이트 (알아서 신규 단어만 추가함)
     print("\n[1단계] LLM 기반 단어 사전 생성 및 업데이트를 진행합니다.")
-    generator = DictionaryGenerator(raw_folder_path=RAW_DIR, metadata_path=METADATA_PATH)
+    generator = DictionaryGenerator(raw_folder_path=RAW_DIR, metadata_path=METADATA_PATH, llm_model="gpt-4o-mini")
     # 바뀐 메서드 이름(build_or_update_dictionary) 호출
     #generator.build_or_update_dictionary(chunk_size=200, save_path=DICT_PATH)
 

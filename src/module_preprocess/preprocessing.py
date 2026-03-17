@@ -2,6 +2,7 @@ import os
 import glob
 import re
 import json
+import asyncio
 import pandas as pd  # 메타데이터 CSV 로드를 위해 추가
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
@@ -51,7 +52,7 @@ class DictionaryGenerator:
             course_id = parts[1]
             
             # 3. 데이터프레임에서 해당 날짜, 코스 ID와 일치하는 행 필터링
-            matched = df[(df['date'] == date_str) & (df['course_id'] == course_id)]
+            matched = self.metadata_df[(self.metadata_df['date'] == date_str) & (self.metadata_df['course_id'] == course_id)]
             
             # 4. 일치하는 모든 세션(오전/오후)의 주제와 내용을 세트에 추가
             for _, row in matched.iterrows():
@@ -124,6 +125,7 @@ class DictionaryGenerator:
         """개별 청크를 비동기적으로 LLM에 요청하고 마스터 사전에 병합합니다."""
         async with semaphore: # 동시에 실행되는 코루틴 개수 제한
             try:
+                await asyncio.sleep(2) # 🚦 Rate Limit(TPM) 방지: 요청 전 2초의 쿨타임을 강제로 줍니다. (Pace your requests)
                 response = await self.llm.ainvoke(chat_prompt.format_prompt(
                     session_topics=session_topics, 
                     words=", ".join(chunk)
@@ -132,15 +134,15 @@ class DictionaryGenerator:
                 chunk_dict = json.loads(clean_text)
                 
                 # 병합 로직
-                for standard, content in chunk_dict.items():
-                    variations = content.get("variations", []) if isinstance(content, dict) else content
+                for standard, variations in chunk_dict.items():
+                    # 만약 LLM이 dict로 주면 리스트로 빼내고, 아니면 그대로 씀
+                    vars_list = variations.get("variations", []) if isinstance(variations, dict) else variations
                     
                     if standard in master_dict:
-                        old_vars = master_dict[standard].get("variations", []) if isinstance(master_dict[standard], dict) else master_dict[standard]
-                        merged_vars = list(set(old_vars + variations))
-                        master_dict[standard] = {"variations": merged_vars, "reason": content.get("reason", "업데이트됨")}
+                        # 기존 변이어 리스트와 합치고 중복 제거
+                        master_dict[standard] = list(set(master_dict[standard] + vars_list))
                     else:
-                        master_dict[standard] = {"variations": variations, "reason": content.get("reason", "")}
+                        master_dict[standard] = vars_list
                         
                     existing_words.add(standard)
                     existing_words.update(variations)
