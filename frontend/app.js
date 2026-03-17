@@ -107,19 +107,30 @@ function disableDownloads() {
   downloadJson.href = "#";
 }
 
-function enableDownloads(pdfBlob, jsonBlob) {
-  if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+function enableJsonDownload(jsonBlob) {
   if (jsonUrl) URL.revokeObjectURL(jsonUrl);
-
-  pdfUrl = URL.createObjectURL(pdfBlob);
   jsonUrl = URL.createObjectURL(jsonBlob);
-
-  downloadPdf.setAttribute("aria-disabled", "false");
   downloadJson.setAttribute("aria-disabled", "false");
-  downloadPdf.href = pdfUrl;
   downloadJson.href = jsonUrl;
-  downloadPdf.setAttribute("download", "analysis_report.pdf");
   downloadJson.setAttribute("download", "analysis.json");
+}
+
+function enablePdfDownload(pdfBlob) {
+  if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+  pdfUrl = URL.createObjectURL(pdfBlob);
+  downloadPdf.setAttribute("aria-disabled", "false");
+  downloadPdf.href = pdfUrl;
+  downloadPdf.setAttribute("download", "analysis_report.pdf");
+}
+
+function disablePdfDownload() {
+  if (pdfUrl) {
+    URL.revokeObjectURL(pdfUrl);
+    pdfUrl = null;
+  }
+  downloadPdf.setAttribute("aria-disabled", "true");
+  downloadPdf.removeAttribute("download");
+  downloadPdf.href = "#";
 }
 
 function clampScore(value) {
@@ -130,167 +141,26 @@ function computeScore(seed, multiplier) {
   return clampScore(70 + (seed * multiplier) % 26);
 }
 
-function escapePdf(text) {
-  return text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
-}
-
-function createFallbackPdfBlob() {
-  const lines = [
-    "EduInsightAI Report",
-    "Analysis summary is ready.",
-    "Please review the JSON for details.",
-  ];
-  const escaped = lines.map(escapePdf);
-  const textLines = escaped
-    .map((line, idx) => `${idx === 0 ? "" : "0 -22 Td "}(${line}) Tj`)
-    .join(" ");
-  const stream = `BT /F1 18 Tf 72 720 Td ${textLines} ET`;
-
-  const objects = [];
-  objects.push("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
-  objects.push("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
-  objects.push(
-    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n"
-  );
-  objects.push(`4 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}\nendstream\nendobj\n`);
-  objects.push("5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n");
-
-  const header = "%PDF-1.4\n";
-  let offset = header.length;
-  const xrefEntries = ["0000000000 65535 f \n"];
-
-  objects.forEach((obj) => {
-    const entry = offset.toString().padStart(10, "0");
-    xrefEntries.push(`${entry} 00000 n \n`);
-    offset += obj.length;
-  });
-
-  const xref = `xref\n0 ${objects.length + 1}\n${xrefEntries.join("")}`;
-  const trailer = `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${offset}\n%%EOF`;
-
-  const pdfContent = header + objects.join("") + xref + trailer;
-  return new Blob([pdfContent], { type: "application/pdf" });
-}
-
-function clampFive(value) {
-  return Math.max(1, Math.min(5, value));
-}
-
-function toFivePointScore(scoreText) {
-  const raw = extractScoreValue(scoreText);
-  const score = raw > 0 ? raw / 20 : 3;
-  return Number.parseFloat(clampFive(score).toFixed(1));
-}
-
-function parseMetricNumber(text, fallback = 0) {
-  if (typeof text !== "string") return fallback;
-  const matched = text.match(/\d+/);
-  if (!matched) return fallback;
-  const value = Number.parseInt(matched[0], 10);
-  return Number.isNaN(value) ? fallback : value;
-}
-
-function buildReportPayload(data) {
-  const structure = toFivePointScore(data.scores?.structure || "");
-  const delivery = toFivePointScore(data.scores?.delivery || "");
-  const interaction = toFivePointScore(data.scores?.interaction || "");
-  const concept = Number.parseFloat(clampFive((structure + delivery) / 2).toFixed(1));
-  const practice = Number.parseFloat(clampFive(delivery - 0.1).toFixed(1));
-
-  const repeatCount = parseMetricNumber(data.metrics?.repeat || "", 5);
-  const completePercent = parseMetricNumber(data.metrics?.complete || "", 84);
-  const speedWpm = parseMetricNumber(data.metrics?.speed || "", 150);
-  const questionCount = parseMetricNumber(data.metrics?.question || "", 6);
-  const incompleteRatio = Number.parseFloat(
-    Math.max(0, Math.min(1, (100 - completePercent) / 100)).toFixed(2)
-  );
-  const repeatRatio = Number.parseFloat(Math.min(0.35, repeatCount / 40).toFixed(2));
-
-  const issues = Array.isArray(data.weaknesses) ? data.weaknesses : [];
-  const recommendations = Array.isArray(data.recommendations) ? data.recommendations : [];
-  const evidences = issues.map((issue, index) => {
-    if (recommendations[index]) return recommendations[index];
-    return `${issue} 구간의 전개를 다시 점검해 주세요.`;
-  });
-
-  return {
-    lecture_id: `${data.date || "unknown"}_${data.course_id || "lecture"}`,
-    metadata: {
-      course_id: data.course_id || "-",
-      course_name: data.course_name || "-",
-      date: data.date || "-",
-      instructor: data.instructor || "-",
-      sub_instructor: data.sub_instructor || "-",
-      sessions: [
-        {
-          time: data.time || "-",
-          subject: data.subject || "-",
-          content: data.content || "-",
-        },
-      ],
-    },
-    analysis: {
-      language_quality: {
-        repeat_expressions: {
-          이제: Math.max(1, repeatCount),
-          그래서: Math.max(1, Math.round(repeatCount * 0.8)),
-          어쨌든: Math.max(1, Math.round(repeatCount * 0.4)),
-        },
-        repeat_ratio: repeatRatio,
-        incomplete_sentence_ratio: incompleteRatio,
-        speech_style_ratio: {
-          formal: 0.9,
-          informal: 0.1,
-        },
-      },
-      concept_clarity_metrics: {
-        speech_rate_wpm: speedWpm,
-      },
-      interaction_metrics: {
-        understanding_question_count: questionCount,
-      },
-      summary_scores: {
-        lecture_structure: {
-          learning_objective_intro: clampFive(structure + 0.2),
-          previous_lesson_linkage: clampFive(structure - 0.3),
-          explanation_sequence: clampFive(structure + 0.1),
-          key_point_emphasis: clampFive(structure - 0.1),
-          closing_summary: clampFive(structure - 0.4),
-        },
-        concept_clarity: {
-          concept_definition: clampFive(concept + 0.2),
-          analogy_example_usage: clampFive(concept),
-          prerequisite_check: clampFive(concept - 0.2),
-        },
-        practice_linkage: {
-          example_appropriateness: clampFive(practice + 0.2),
-          practice_transition: clampFive(practice),
-          error_handling: clampFive(practice - 0.2),
-        },
-        interaction: {
-          participation_induction: clampFive(interaction - 0.2),
-          question_response_sufficiency: clampFive(interaction),
-        },
-      },
-      overall_strengths: Array.isArray(data.strengths) ? data.strengths : [],
-      overall_issues: issues,
-      overall_evidences: evidences,
-    },
-  };
-}
-
 async function createPdfBlob(analysisData) {
-  const payload = buildReportPayload(analysisData);
   const response = await fetch("/api/report/pdf", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(analysisData),
   });
 
   if (!response.ok) {
-    throw new Error(`PDF API failed: ${response.status}`);
+    let message = `PDF 생성 API 실패 (${response.status})`;
+    try {
+      const errorJson = await response.json();
+      if (errorJson?.error) {
+        message = `PDF 생성 실패: ${errorJson.error}`;
+      }
+    } catch (_err) {
+      // JSON 파싱 실패 시 기본 메시지를 사용합니다.
+    }
+    throw new Error(message);
   }
 
   return await response.blob();
@@ -327,9 +197,9 @@ function getChunkPriority(index, seed) {
 }
 
 function getChunkPriorityLabel(priority) {
-  if (priority === "high") return "HIGH";
-  if (priority === "medium") return "MEDIUM";
-  return "LOW";
+  if (priority === "high") return "높음";
+  if (priority === "medium") return "중간";
+  return "낮음";
 }
 
 function clearChildren(node) {
@@ -411,9 +281,9 @@ function resetSummaryValues() {
   primaryAction.textContent = "분석 완료 후 표시됩니다.";
 
   clearChildren(lectureInfo);
-  appendInfoRow(lectureInfo, "course_name", "분석 전…");
-  appendInfoRow(lectureInfo, "instructor", "분석 전…");
-  appendInfoRow(lectureInfo, "date / time", "분석 전…");
+  appendInfoRow(lectureInfo, "강의명", "분석 전…");
+  appendInfoRow(lectureInfo, "강사", "분석 전…");
+  appendInfoRow(lectureInfo, "일시", "분석 전…");
 
   setScoreDisplay(scoreStructure, meterStructure, "?");
   setScoreDisplay(scoreDelivery, meterDelivery, "?");
@@ -450,9 +320,9 @@ function setSummaryValues(data) {
   renderList(riskList, data.risks);
 
   clearChildren(lectureInfo);
-  appendInfoRow(lectureInfo, "course_name", data.course_name);
-  appendInfoRow(lectureInfo, "instructor", data.instructor);
-  appendInfoRow(lectureInfo, "date / time", `${data.date} · ${data.time}`);
+  appendInfoRow(lectureInfo, "강의명", data.course_name);
+  appendInfoRow(lectureInfo, "강사", data.instructor);
+  appendInfoRow(lectureInfo, "일시", `${data.date} · ${data.time}`);
 
   setScoreDisplay(scoreStructure, meterStructure, data.scores.structure);
   setScoreDisplay(scoreDelivery, meterDelivery, data.scores.delivery);
@@ -521,7 +391,7 @@ function buildAnalysisData(formValues, file) {
     metrics: {
       repeat: `${(seed % 6) + 3}회`,
       complete: `${computeScore(seed, 2)}%`,
-      speed: `${(seed % 40) + 120} WPM`,
+      speed: `${(seed % 40) + 120} 단어/분`,
       question: `${(seed % 5) + 4}개`,
     },
     llm: {
@@ -531,7 +401,7 @@ function buildAnalysisData(formValues, file) {
       interaction: "질문 타이밍이 효과적입니다.",
     },
     chunks: Array.from({ length: 3 }).map((_, index) => ({
-      title: `Chunk ${index + 1}`,
+      title: `청크 ${index + 1}`,
       priority: getChunkPriority(index, seed),
       summary:
         index % 2 === 0
@@ -607,17 +477,17 @@ async function finishAnalysis() {
   const jsonBlob = new Blob([JSON.stringify(analysisData, null, 2)], {
     type: "application/json",
   });
-  let pdfBlob;
+  enableJsonDownload(jsonBlob);
+
   try {
-    pdfBlob = await createPdfBlob(analysisData);
+    const pdfBlob = await createPdfBlob(analysisData);
+    enablePdfDownload(pdfBlob);
+    showToast("분석이 완료되어 PDF/JSON 다운로드가 활성화되었습니다.");
   } catch (error) {
     console.error(error);
-    pdfBlob = createFallbackPdfBlob();
-    showToast("PDF API 연결에 실패해 기본 PDF로 대체했습니다.");
+    disablePdfDownload();
+    showToast(`PDF 생성에 실패했습니다. JSON만 다운로드할 수 있습니다. (${error.message})`);
   }
-
-  enableDownloads(pdfBlob, jsonBlob);
-  showToast("분석이 완료되어 다운로드가 활성화되었습니다.");
 }
 
 if (scrollButtons.length) {
@@ -671,6 +541,25 @@ function parseCsvLine(line) {
   return result;
 }
 
+function decodeCsvText(buffer) {
+  const decoders = [
+    { encoding: "utf-8", options: { fatal: true } },
+    { encoding: "euc-kr", options: { fatal: true } },
+    { encoding: "utf-8", options: { fatal: false } },
+  ];
+
+  for (const decoderInfo of decoders) {
+    try {
+      const decoder = new TextDecoder(decoderInfo.encoding, decoderInfo.options);
+      return decoder.decode(buffer);
+    } catch (_err) {
+      // 다음 인코딩을 시도합니다.
+    }
+  }
+
+  throw new Error("CSV 인코딩을 해석하지 못했습니다. UTF-8 또는 CP949(EUC-KR)로 저장해 주세요.");
+}
+
 function applyRowToForm(headers, values) {
   let filled = 0;
   headers.forEach((header, index) => {
@@ -690,42 +579,48 @@ metadataCsvInput.addEventListener("change", () => {
 
   const reader = new FileReader();
   reader.onload = (e) => {
-    const text = e.target.result;
-    const lines = text.split(/\r?\n/).filter((l) => l.trim());
-    if (lines.length < 2) {
-      showToast("CSV에 헤더와 데이터 행이 필요합니다.");
-      return;
+    try {
+      const buffer = e.target.result;
+      const text = decodeCsvText(buffer);
+      const lines = text.split(/\r?\n/).filter((l) => l.trim());
+      if (lines.length < 2) {
+        showToast("CSV에 헤더와 데이터 행이 필요합니다.");
+        return;
+      }
+
+      csvHeaders = parseCsvLine(lines[0]);
+      csvRows = lines.slice(1).map((l) => parseCsvLine(l));
+
+      if (csvRows.length === 1) {
+        const count = applyRowToForm(csvHeaders, csvRows[0]);
+        showToast(count > 0 ? `CSV에서 ${count}개 필드를 불러왔습니다.` : "CSV 헤더가 일치하지 않습니다.");
+        csvSessionPicker.hidden = true;
+        return;
+      }
+
+      const dateIdx = csvHeaders.findIndex((h) => h.trim().toLowerCase() === "date");
+      const timeIdx = csvHeaders.findIndex((h) => h.trim().toLowerCase() === "time");
+      const subjectIdx = csvHeaders.findIndex((h) => h.trim().replace(/^\uFEFF/, "").toLowerCase() === "subject");
+
+      clearChildren(csvSessionSelect);
+      csvRows.forEach((row, i) => {
+        const option = document.createElement("option");
+        option.value = i;
+        const datePart = dateIdx >= 0 ? row[dateIdx] : "";
+        const timePart = timeIdx >= 0 ? row[timeIdx] : "";
+        const subjectPart = subjectIdx >= 0 ? row[subjectIdx] : "";
+        option.textContent = `${datePart}  ${timePart}  |  ${subjectPart}`;
+        csvSessionSelect.appendChild(option);
+      });
+
+      csvSessionPicker.hidden = false;
+      showToast(`${csvRows.length}개 세션을 불러왔습니다. 세션을 선택하세요.`);
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || "CSV를 읽는 중 오류가 발생했습니다.");
     }
-
-    csvHeaders = parseCsvLine(lines[0]);
-    csvRows = lines.slice(1).map((l) => parseCsvLine(l));
-
-    if (csvRows.length === 1) {
-      const count = applyRowToForm(csvHeaders, csvRows[0]);
-      showToast(count > 0 ? `CSV에서 ${count}개 필드를 불러왔습니다.` : "CSV 헤더가 일치하지 않습니다.");
-      csvSessionPicker.hidden = true;
-      return;
-    }
-
-    const dateIdx = csvHeaders.findIndex((h) => h.trim().toLowerCase() === "date");
-    const timeIdx = csvHeaders.findIndex((h) => h.trim().toLowerCase() === "time");
-    const subjectIdx = csvHeaders.findIndex((h) => h.trim().replace(/^\uFEFF/, "").toLowerCase() === "subject");
-
-    clearChildren(csvSessionSelect);
-    csvRows.forEach((row, i) => {
-      const option = document.createElement("option");
-      option.value = i;
-      const datePart = dateIdx >= 0 ? row[dateIdx] : "";
-      const timePart = timeIdx >= 0 ? row[timeIdx] : "";
-      const subjectPart = subjectIdx >= 0 ? row[subjectIdx] : "";
-      option.textContent = `${datePart}  ${timePart}  |  ${subjectPart}`;
-      csvSessionSelect.appendChild(option);
-    });
-
-    csvSessionPicker.hidden = false;
-    showToast(`${csvRows.length}개 세션을 불러왔습니다. 세션을 선택하세요.`);
   };
-  reader.readAsText(file);
+  reader.readAsArrayBuffer(file);
 });
 
 csvApplyBtn.addEventListener("click", () => {
@@ -759,5 +654,7 @@ window.addEventListener("beforeunload", (event) => {
     event.returnValue = "";
   }
 });
+
+
 
 

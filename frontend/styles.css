@@ -1,20 +1,20 @@
 ﻿:root {
   color-scheme: light;
-  --bg: #f6efe8;
-  --bg-soft: #fffaf5;
-  --surface: rgba(255, 255, 255, 0.86);
+  --bg: #fff2e4;
+  --bg-soft: #fff8ef;
+  --surface: rgba(255, 255, 255, 0.9);
   --surface-strong: #ffffff;
-  --surface-mute: #fff3e8;
-  --border: rgba(196, 135, 72, 0.22);
+  --surface-mute: #fff0df;
+  --border: rgba(230, 94, 0, 0.22);
   --text: #202124;
-  --text-muted: #605347;
-  --accent: #f27d1f;
-  --accent-strong: #d76407;
-  --accent-soft: #ffd4b0;
+  --text-muted: #624632;
+  --accent: #ff7a00;
+  --accent-strong: #e65e00;
+  --accent-soft: #ffc48d;
   --ok: #3f8f57;
   --danger: #bf5147;
-  --shadow: 0 22px 44px rgba(145, 98, 57, 0.16);
-  --shadow-soft: 0 12px 26px rgba(145, 98, 57, 0.11);
+  --shadow: 0 22px 44px rgba(230, 94, 0, 0.18);
+  --shadow-soft: 0 12px 26px rgba(230, 94, 0, 0.14);
   --radius-xl: 32px;
   --radius-lg: 24px;
   --radius-md: 16px;
@@ -44,7 +44,7 @@ body {
   background:
     radial-gradient(circle at 16% -8%, #fff4df 0%, transparent 42%),
     radial-gradient(circle at 92% 8%, #ffe5ca 0%, transparent 34%),
-    linear-gradient(180deg, #fff9f1 0%, #f8efe7 48%, #f6eee8 100%);
+    linear-gradient(180deg, #fff9f1 0%, #ffeedb 44%, #ffe4c8 100%);
   line-height: 1.65;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -198,7 +198,7 @@ img {
 
 .btn-primary {
   color: #fff;
-  background: linear-gradient(120deg, #ff9a3d, var(--accent));
+  background: linear-gradient(120deg, #ffb154, var(--accent));
   box-shadow: 0 12px 24px rgba(242, 125, 31, 0.34);
 }
 
@@ -731,7 +731,7 @@ main {
 .status-list li.is-active {
   color: #fff;
   border-color: rgba(216, 100, 7, 0.26);
-  background: linear-gradient(120deg, #ff9f46, #ef7b1f);
+  background: linear-gradient(120deg, #ffaf5d, #ff7a00);
 }
 
 .summary-overview {
@@ -750,7 +750,7 @@ main {
 }
 
 .overview-card--score {
-  background: linear-gradient(165deg, #ffb579 0%, #f08e37 72%);
+  background: linear-gradient(165deg, #ffbe74 0%, #ff7a00 72%);
   color: #fff;
   border-color: transparent;
 }
@@ -875,7 +875,7 @@ main {
   width: 0;
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(120deg, #ffb46a, var(--accent));
+  background: linear-gradient(120deg, #ffc27a, var(--accent));
   transition: width 0.4s ease;
 }
 

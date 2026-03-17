@@ -39,28 +39,28 @@ from reportlab.platypus import (
 
 PAGE_W, PAGE_H = A4
 
-# Color system (frontend orange mood)
-C_PRIMARY = colors.HexColor("#F27D1F")
-C_PRIMARY_DARK = colors.HexColor("#D76407")
-C_ACCENT = colors.HexColor("#F79A45")
-C_SURFACE = colors.HexColor("#FFF3E8")
-C_SURFACE_ALT = colors.HexColor("#FFE5CF")
-C_BORDER = colors.HexColor("#E4C7A7")
-C_TEXT = colors.HexColor("#202124")
-C_MUTED = colors.HexColor("#605347")
+# Color system (vivid orange mood)
+C_PRIMARY = colors.HexColor("#FF7A00")
+C_PRIMARY_DARK = colors.HexColor("#E65E00")
+C_ACCENT = colors.HexColor("#FFA347")
+C_SURFACE = colors.HexColor("#FFF5EA")
+C_SURFACE_ALT = colors.HexColor("#FFE8CF")
+C_BORDER = colors.HexColor("#EBC79E")
+C_TEXT = colors.HexColor("#241A12")
+C_MUTED = colors.HexColor("#6B4E37")
 C_SUCCESS = colors.HexColor("#3F8F57")
 C_WARNING = colors.HexColor("#C6842F")
 C_DANGER = colors.HexColor("#BF5147")
 C_WHITE = colors.white
 
-CHART_BG = "#FFF8F1"
-CHART_GRID = "#DEC7B0"
-CHART_REF = "#B08D6D"
-CHART_TEXT = "#605347"
-CHART_LINE = "#F27D1F"
-CHART_LINE_SOFT = "#FFD4B0"
-CHART_RING_DARK = "#D76407"
-CHART_RING_LIGHT = "#FFD4B0"
+CHART_BG = "#FFF7EE"
+CHART_GRID = "#E2C6A8"
+CHART_REF = "#C48D57"
+CHART_TEXT = "#6B4E37"
+CHART_LINE = "#FF7A00"
+CHART_LINE_SOFT = "#FFD7AF"
+CHART_RING_DARK = "#E65E00"
+CHART_RING_LIGHT = "#FFD7AF"
 
 CATEGORY_ORDER = [
     "lecture_structure",
@@ -578,7 +578,7 @@ def chart_repeat_expressions(repeat_expr: dict[str, Any], top_n: int = 10) -> io
     ax.set_yticks(y)
     ax.set_yticklabels(labels, fontsize=10)
     ax.set_xlim(0, max_value * 1.22)
-    ax.set_xlabel("등장 횟수", fontsize=9, color="#5E6B7A")
+    ax.set_xlabel("등장 횟수", fontsize=9, color=CHART_TEXT)
 
     for bar, value in zip(bars, values):
         ax.text(
@@ -711,7 +711,7 @@ def build_cover(data: dict[str, Any], analysis: dict[str, Any], styles: dict[str
 
     card_width = (width - 1.2 * cm) / 4
     cards = [
-        metric_card("종합 점수", f"{overall:.2f}", "/ 5.00", styles, card_width, C_SURFACE),
+        metric_card("종합 점수", f"{overall:.2f}", "5점 만점", styles, card_width, C_SURFACE),
         metric_card("반복 표현", pct(repeat_ratio), "전체 발화 대비", styles, card_width, C_SURFACE),
         metric_card("문장 완결률", pct(complete_ratio), "완결 문장 비율", styles, card_width, C_SURFACE),
         metric_card("이해 확인 질문", f"{q_count}회", "수업 중 질문 수", styles, card_width, C_SURFACE),
@@ -819,7 +819,7 @@ def build_language_section(analysis: dict[str, Any], styles: dict[str, Paragraph
     quality_cards = [
         metric_card("반복 표현 비율", pct(repeat_ratio), "낮을수록 전달 안정", styles, card_width),
         metric_card("문장 완결률", pct(complete_ratio), "높을수록 명료함", styles, card_width),
-        metric_card("발화 속도", f"{speech_rate} wpm", "적정 범위: 140~180", styles, card_width),
+        metric_card("발화 속도", f"{speech_rate} 단어/분", "권장 범위: 140~180", styles, card_width),
     ]
     card_table = Table([quality_cards], colWidths=[card_width] * 3)
     card_table.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
@@ -924,7 +924,7 @@ def build_scores_section(analysis: dict[str, Any], styles: dict[str, ParagraphSt
 
     top_cards = [
         metric_card("종합 점수", f"{overall:.2f}", f"등급: {score_grade(overall)}", styles, (width - 0.6 * cm) / 2),
-        metric_card("항목 점수", f"{overall - 3.0:+.2f}", "/ 3.00", styles, (width - 0.6 * cm) / 2, C_SURFACE_ALT),
+        metric_card("항목 점수", f"{overall - 3.0:+.2f}", "기준점(3.00) 대비", styles, (width - 0.6 * cm) / 2, C_SURFACE_ALT),
     ]
     top_tbl = Table([top_cards], colWidths=[(width - 0.6 * cm) / 2, (width - 0.6 * cm) / 2])
     top_tbl.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
@@ -1049,7 +1049,16 @@ def build_scores_section(analysis: dict[str, Any], styles: dict[str, ParagraphSt
         )
         story.append(detail_table)
 
-        story.append(Spacer(1, 0.24 * cm))
+        story.append(PageBreak())
+        story.append(
+            section_header(
+                "2-2. 항목 설명",
+                "세부 평가 항목의 의미를 확인하고 다음 수업 액션을 정리합니다.",
+                styles,
+                width,
+            )
+        )
+        story.append(Spacer(1, 0.2 * cm))
         story.append(Paragraph("항목 설명", styles["title"]))
         story.append(Paragraph("설명을 확인하고 다음 수업 액션을 정리합니다.", styles["small"]))
         story.append(Spacer(1, 0.1 * cm))
@@ -1082,50 +1091,64 @@ def build_scores_section(analysis: dict[str, Any], styles: dict[str, ParagraphSt
 
     return story
 
-def derive_priority_actions(summary_scores: dict[str, dict[str, float]], issues: list[str]) -> list[str]:
-    rows = flatten_scores(summary_scores)
-    rows.sort(key=lambda x: x["score"])
-    actions: list[str] = []
-
-    for row in rows[:3]:
-        actions.append(
-            f"{row['category']}의 '{row['item']}' 점수({row['score']:.1f}점)를 우선 개선하세요. "
-            "다음 수업에서 해당 항목을 체크리스트로 운영하는 것이 효과적입니다."
-        )
-
-    if issues:
-        actions.append(f"핵심 이슈 '{issues[0]}'에 대해 수업 시작 전-중-후 대응 시나리오를 미리 설계하세요.")
-
-    deduped: list[str] = []
-    seen: set[str] = set()
-    for action in actions:
-        if action in seen:
-            continue
-        deduped.append(action)
-        seen.add(action)
-    return deduped[:4]
-
-
 def build_insight_section(analysis: dict[str, Any], styles: dict[str, ParagraphStyle], width: float) -> list:
     story: list = []
 
     strengths = analysis.get("overall_strengths", []) if isinstance(analysis.get("overall_strengths", []), list) else []
     issues = analysis.get("overall_issues", []) if isinstance(analysis.get("overall_issues", []), list) else []
     evidences = analysis.get("overall_evidences", []) if isinstance(analysis.get("overall_evidences", []), list) else []
-    summary_scores = analysis.get("summary_scores", {})
 
-    story.append(section_header("3. 개선 인사이트", "강점과 개선 포인트를 근거와 함께 정리하고, 다음 액션을 제시합니다.", styles, width))
+    story.append(
+        section_header(
+            "3. 개선 인사이트",
+            "강점과 개선 필요 사항을 근거와 함께 명확히 구분해 제시합니다.",
+            styles,
+            width,
+        )
+    )
     story.append(Spacer(1, 0.26 * cm))
 
-    story.append(Paragraph("강의 강점", styles["title"]))
+    strength_bg = C_SURFACE
+    strength_bg_alt = C_SURFACE_ALT
+    strength_border = C_BORDER
+    issue_bg = C_SURFACE
+    issue_bg_alt = C_SURFACE_ALT
+    issue_border = C_BORDER
+
+    section_label_style = ParagraphStyle(
+        "InsightSectionLabel",
+        parent=styles["title"],
+        fontSize=11,
+        leading=14,
+        textColor=C_WHITE,
+    )
+
+    def insight_label(text: str, bg_color: colors.Color) -> Table:
+        label = Table([[Paragraph(esc(text), section_label_style)]], colWidths=[width])
+        label.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), bg_color),
+                    ("TOPPADDING", (0, 0), (-1, -1), 7),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                ]
+            )
+        )
+        return label
+
+    story.append(insight_label("강의 강점", C_ACCENT))
+    story.append(Spacer(1, 0.1 * cm))
+
     if strengths:
-        for idx, text in enumerate(strengths, start=1):
-            row = Table([[Paragraph(f"{idx}. {esc(text)}", styles["bullet"])]], colWidths=[width])
+        for idx, value in enumerate(strengths, start=1):
+            row = Table([[Paragraph(f"{idx}. {esc(value)}", styles["bullet"])]], colWidths=[width])
             row.setStyle(
                 TableStyle(
                     [
-                        ("BACKGROUND", (0, 0), (-1, -1), colors.white if idx % 2 else C_SURFACE),
-                        ("BOX", (0, 0), (-1, -1), 0.6, C_BORDER),
+                        ("BACKGROUND", (0, 0), (-1, -1), strength_bg if idx % 2 else strength_bg_alt),
+                        ("BOX", (0, 0), (-1, -1), 0.8, strength_border),
                         ("TOPPADDING", (0, 0), (-1, -1), 7),
                         ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
                         ("LEFTPADDING", (0, 0), (-1, -1), 8),
@@ -1136,10 +1159,25 @@ def build_insight_section(analysis: dict[str, Any], styles: dict[str, ParagraphS
             story.append(row)
             story.append(Spacer(1, 0.08 * cm))
     else:
-        story.append(Paragraph("- 추출된 강점 정보가 없습니다.", styles["small"]))
+        row = Table([[Paragraph("- 추출된 강점 정보가 없습니다.", styles["small"])]], colWidths=[width])
+        row.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), strength_bg_alt),
+                    ("BOX", (0, 0), (-1, -1), 0.8, strength_border),
+                    ("TOPPADDING", (0, 0), (-1, -1), 7),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ]
+            )
+        )
+        story.append(row)
 
     story.append(Spacer(1, 0.2 * cm))
-    story.append(Paragraph("개선 필요 사항", styles["title"]))
+    story.append(insight_label("개선 필요 사항", C_ACCENT))
+    story.append(Spacer(1, 0.1 * cm))
+
     if issues:
         for idx, issue in enumerate(issues, start=1):
             blocks: list = [Paragraph(f"{idx}. {esc(issue)}", styles["bullet"])]
@@ -1151,8 +1189,8 @@ def build_insight_section(analysis: dict[str, Any], styles: dict[str, ParagraphS
             row.setStyle(
                 TableStyle(
                     [
-                        ("BACKGROUND", (0, 0), (-1, -1), colors.white if idx % 2 else C_SURFACE_ALT),
-                        ("BOX", (0, 0), (-1, -1), 0.6, C_BORDER),
+                        ("BACKGROUND", (0, 0), (-1, -1), issue_bg if idx % 2 else issue_bg_alt),
+                        ("BOX", (0, 0), (-1, -1), 0.8, issue_border),
                         ("TOPPADDING", (0, 0), (-1, -1), 8),
                         ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
                         ("LEFTPADDING", (0, 0), (-1, -1), 8),
@@ -1163,27 +1201,40 @@ def build_insight_section(analysis: dict[str, Any], styles: dict[str, ParagraphS
             story.append(row)
             story.append(Spacer(1, 0.09 * cm))
     else:
-        story.append(Paragraph("- 추출된 개선 이슈 정보가 없습니다.", styles["small"]))
-
-    story.append(Spacer(1, 0.25 * cm))
-    story.append(HRFlowable(width="100%", thickness=0.7, color=C_BORDER))
-    story.append(Spacer(1, 0.2 * cm))
-    story.append(Paragraph("우선 실행 액션", styles["title"]))
-
-    actions = derive_priority_actions(summary_scores, issues)
-    if actions:
-        for idx, action in enumerate(actions, start=1):
-            story.append(Paragraph(f"{idx}. {esc(action)}", styles["bullet"]))
-            story.append(Spacer(1, 0.05 * cm))
-    else:
-        story.append(Paragraph("- 실행 액션을 자동 도출할 데이터가 부족합니다.", styles["small"]))
+        row = Table([[Paragraph("- 추출된 개선 이슈 정보가 없습니다.", styles["small"])]], colWidths=[width])
+        row.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), issue_bg_alt),
+                    ("BOX", (0, 0), (-1, -1), 0.8, issue_border),
+                    ("TOPPADDING", (0, 0), (-1, -1), 8),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ]
+            )
+        )
+        story.append(row)
 
     return story
 
 
+def load_analysis_json(path: str) -> dict[str, Any]:
+    raw = Path(path).read_bytes()
+    for encoding in ("utf-8-sig", "utf-8", "cp949", "euc-kr"):
+        try:
+            parsed = json.loads(raw.decode(encoding))
+            if isinstance(parsed, dict):
+                return parsed
+            raise ValueError("JSON 루트는 객체(dict)여야 합니다.")
+        except UnicodeDecodeError:
+            continue
+
+    raise UnicodeDecodeError("analysis_json", raw, 0, len(raw), "지원하는 인코딩(utf-8/cp949/euc-kr)으로 읽지 못했습니다.")
+
+
 def generate_report(analysis_json_path: str, output_pdf_path: str) -> None:
-    with open(analysis_json_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    data = load_analysis_json(analysis_json_path)
 
     reg_font, bold_font, mpl_fonts = register_korean_fonts()
     setup_matplotlib_fonts(mpl_fonts)
@@ -1224,4 +1275,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     generate_report(args.input, args.output)
+
+
+
+
+
+
+
+
 

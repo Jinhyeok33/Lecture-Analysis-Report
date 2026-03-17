@@ -30,10 +30,10 @@
           <span class="brand-name">EduInsightAI</span>
         </div>
         <div class="nav-links" role="navigation" aria-label="페이지 섹션">
-          <a href="#intro">Home</a>
-          <a href="#workflow">Features</a>
-          <a href="#summary">Report</a>
-          <a href="#download">About</a>
+          <a href="#intro">소개</a>
+          <a href="#workflow">기능</a>
+          <a href="#summary">리포트</a>
+          <a href="#download">다운로드</a>
         </div>
         <button
           class="btn btn-logo-button"
@@ -49,7 +49,7 @@
     <main id="main">
       <section id="intro" class="section hero">
         <div class="hero-content">
-          <p class="eyebrow">AI Lecture Quality Report</p>
+          <p class="eyebrow">AI 강의 품질 리포트</p>
           <h1>
             AI로 분석하는<br />
             <span>강의 품질</span> 리포트
@@ -66,7 +66,7 @@
           </div>
           <div class="support-tags" aria-label="지원 형식 안내">
             <span>txt 스크립트 업로드</span>
-            <span>metadata 입력</span>
+            <span>메타데이터 입력</span>
             <span>PDF/JSON 다운로드</span>
           </div>
         </div>
@@ -81,7 +81,7 @@
             <div class="hero-ring" id="hero-ring" aria-hidden="true">
               <div class="hero-ring__inner">
                 <strong id="hero-ring-score">-</strong>
-                <span>Overall</span>
+                <span>종합</span>
               </div>
             </div>
             <div class="hero-radar" aria-hidden="true">
@@ -155,7 +155,7 @@
           </div>
 
           <div class="form-card">
-            <h3>Metadata 입력</h3>
+            <h3>메타데이터 입력</h3>
             <div class="metadata-csv-upload">
               <label class="field">
                 <span>CSV로 메타데이터 업로드 (선택)</span>
@@ -167,7 +167,7 @@
                 />
               </label>
               <p id="csv-help" class="field-help">
-                CSV 헤더: course_id, course_name, date, time, subject, content, instructor, sub_instructor
+                CSV 헤더(키): course_id, course_name, date, time, subject, content, instructor, sub_instructor
               </p>
               <div id="csv-session-picker" class="csv-session-picker" hidden>
                 <label class="field">
@@ -180,7 +180,7 @@
             <hr class="form-divider" />
             <div class="field-grid">
               <label class="field">
-                <span>course_id</span>
+                <span>강의 ID (course_id)</span>
                 <input
                   type="text"
                   name="course_id"
@@ -190,7 +190,7 @@
                 />
               </label>
               <label class="field">
-                <span>course_name</span>
+                <span>강의명 (course_name)</span>
                 <input
                   type="text"
                   name="course_name"
@@ -199,11 +199,11 @@
                 />
               </label>
               <label class="field">
-                <span>date</span>
+                <span>강의 날짜 (date)</span>
                 <input type="date" name="date" required />
               </label>
               <label class="field">
-                <span>time</span>
+                <span>강의 시간 (time)</span>
                 <input
                   type="text"
                   name="time"
@@ -212,7 +212,7 @@
                 />
               </label>
               <label class="field">
-                <span>subject</span>
+                <span>강의 주제 (subject)</span>
                 <input
                   type="text"
                   name="subject"
@@ -221,7 +221,7 @@
                 />
               </label>
               <label class="field">
-                <span>content</span>
+                <span>강의 내용 (content)</span>
                 <textarea
                   name="content"
                   rows="3"
@@ -230,7 +230,7 @@
                 ></textarea>
               </label>
               <label class="field">
-                <span>instructor</span>
+                <span>강사 (instructor)</span>
                 <input
                   type="text"
                   name="instructor"
@@ -239,7 +239,7 @@
                 />
               </label>
               <label class="field">
-                <span>sub_instructor</span>
+                <span>보조 강사 (sub_instructor)</span>
                 <input
                   type="text"
                   name="sub_instructor"
@@ -319,15 +319,15 @@
             <h3>강의 정보</h3>
             <div class="summary-list" id="lecture-info">
               <div>
-                <span>course_name</span>
+                <span>강의명 (course_name)</span>
                 <strong>분석 전…</strong>
               </div>
               <div>
-                <span>instructor</span>
+                <span>강사 (instructor)</span>
                 <strong>분석 전…</strong>
               </div>
               <div>
-                <span>date / time</span>
+                <span>일시</span>
                 <strong>분석 전…</strong>
               </div>
             </div>
@@ -392,7 +392,7 @@
       <section id="detail" class="section">
         <div class="section-header">
           <h2>상세 분석 영역</h2>
-          <p>토글을 열어 세부 지표와 chunk별 결과를 확인하세요.</p>
+          <p>토글을 열어 세부 지표와 청크별 결과를 확인하세요.</p>
         </div>
 
         <div class="accordion">
@@ -441,7 +441,7 @@
           </details>
 
           <details>
-            <summary>chunk별 분석 결과</summary>
+            <summary>청크별 분석 결과</summary>
             <div class="chunk-list" id="chunk-list">
               <p class="empty">분석 완료 후 표시됩니다.</p>
             </div>
@@ -470,7 +470,7 @@
             href="#"
             role="button"
             aria-disabled="true"
-            >analysis.json 다운로드</a
+            >분석 JSON 다운로드</a
           >
           <p class="download-note">분석 완료 후 버튼이 활성화됩니다.</p>
         </div>
