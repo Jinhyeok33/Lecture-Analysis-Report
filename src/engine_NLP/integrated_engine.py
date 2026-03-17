@@ -22,10 +22,7 @@ class IntegratedNLPEngine:
         self.quality_analyzer = LanguageQualityAnalyzer(kiwi=self.kiwi)
 
         # 3. 저장 폴더 설정
-        self.output_dir = output_dir
-        #output_dir or r"C:\Repositories\NLP-internship\script\output_NLP"
-        #if not os.path.exists(self.output_dir):
-        #    os.makedirs(self.output_dir)
+        self.output_dir = output_dir #여기에 절대경로 폴더명 있었음
 
     def _read_file(self, file_path):
         for encoding in ['utf-8', 'cp949']:

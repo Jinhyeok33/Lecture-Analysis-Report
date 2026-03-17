@@ -1,4 +1,5 @@
 import os
+import asyncio
 from dotenv import load_dotenv
 from .preprocessing import DictionaryGenerator, RuleBasedPreprocessor
 
@@ -42,7 +43,15 @@ def main():
     print("\n[1단계] LLM 기반 단어 사전 생성 및 업데이트를 진행합니다.")
     generator = DictionaryGenerator(raw_folder_path=RAW_DIR, metadata_path=METADATA_PATH)
     # 바뀐 메서드 이름(build_or_update_dictionary) 호출
-    generator.build_or_update_dictionary(chunk_size=200, save_path=DICT_PATH)
+    #generator.build_or_update_dictionary(chunk_size=200, save_path=DICT_PATH)
+
+    # 일반 함수 호출 대신 asyncio.run()으로 비동기 함수 실행
+    asyncio.run(generator.build_or_update_dictionary_async(
+        chunk_size=50, 
+        save_path=DICT_PATH, 
+        max_concurrency=5 # OpenAI API 티어에 따라 이 값을 10~20으로 늘리면 속도가 훨씬 빨라집니다.
+    ))
+
 
     # 3. 룰베이스 기반 전처리 진행 (항상 실행)
     print(f"\n[2단계] 생성된 사전을 바탕으로 스크립트 전처리를 시작합니다.")

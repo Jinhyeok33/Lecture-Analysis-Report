@@ -22,6 +22,11 @@ langchain
 langchain-openai
 langchain-core
 
+#파이토치
+torch
+torchvision
+torchaudio
+
 
 #의존성 원핫 설치 명령어
 #pip install -r requirements.txt
