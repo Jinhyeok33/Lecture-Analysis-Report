@@ -3,6 +3,14 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# 구현 과정에서 생성한 임시 파일 및 디렉토리
+temp/
+*.py
+*.py[codz]
+*$py.class
+
+
+
 # C extensions
 *.so
 
@@ -212,7 +220,9 @@ __marimo__/
 /workspaces/NLP-internship/src/engine_NLP/temp/
 /workspaces/NLP-internship/src/module_chunking
 /workspaces/NLP-internship/src/module_preprocess
+/workspaces/NLP-internship/src/module_preprocess/temp
 # .gitignore 파일 내용 수정 제안
 src/engine_NLP/temp/
 src/module_chunking/
 src/module_preprocess/
+src/module_preprocess/temp/
