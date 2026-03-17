@@ -11,24 +11,45 @@ Integrated lecture-quality analysis pipeline.
 - `data/outputs/llm`: LLM engine outputs
 - `data/outputs/integrated`: integrated `analysis.json`
 - `data/outputs/reports`: generated PDF reports
-- `src/preprocessing`: preprocessing module (to be integrated from `dev/hs`)
-- `src/nlp_engine`: NLP engine module (to be integrated from `dev/hs`)
-- `src/llm_engine`: LLM engine module (to be integrated from `dev/ik`)
-- `src/integration`: integration module (migrated from `dev/jinhyeok`)
-- `src/reporting`: PDF report generator (migrated from `dev/jinhyeok`)
-- `src/pipeline/run_pipeline.py`: single-command pipeline runner
+- `src/preprocessing`: preprocessing module (from `dev/hs`)
+- `src/nlp_engine`: NLP engine module (from `dev/hs`)
+- `src/llm_engine`: LLM engine module (from `dev/ik`)
+- `src/integration`: integration module (from `dev/jinhyeok`)
+- `src/reporting`: PDF report generator (from `dev/jinhyeok`)
+- `src/pipeline/run_pipeline.py`: unified runner + validators
 
-## Current stage
+## Unified pipeline runner
 
-This branch establishes the target repository schema and migrates `dev/jinhyeok` modules first.
+Default (all stages):
 
-## Run (integration + report)
+```bash
+python -m src.pipeline.run_pipeline --transcript data/raw/<lecture>.txt --metadata data/metadata/lecture_metadata.csv
+```
+
+Stage-specific example (NLP + integration + report using existing LLM JSON):
 
 ```bash
 python -m src.pipeline.run_pipeline \
-  --nlp data/outputs/nlp/sample_nlp.json \
-  --llm data/outputs/llm/sample_summary.json \
+  --run-nlp --run-integrate --run-report \
+  --transcript data/raw/<lecture>.txt \
+  --llm-json data/outputs/llm/<lecture>_summary.json \
   --metadata data/metadata/lecture_metadata.csv \
-  --analysis-out data/outputs/integrated/sample_analysis.json \
-  --report-out data/outputs/reports/sample_report.pdf
+  --strict
 ```
+
+Validation-only example:
+
+```bash
+python -m src.pipeline.run_pipeline \
+  --validate-only \
+  --nlp-json data/outputs/nlp/<file>.json \
+  --llm-json data/outputs/llm/<file>.json \
+  --analysis-json data/outputs/integrated/<file>.json \
+  --metadata data/metadata/lecture_metadata.csv \
+  --strict
+```
+
+## Notes
+
+- `--run-llm` and `--run-preprocess` require `OPENAI_API_KEY`.
+- Runner performs schema and artifact checks after stage execution.

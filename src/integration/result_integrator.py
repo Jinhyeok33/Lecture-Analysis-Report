@@ -1,4 +1,4 @@
-"""
+﻿"""
 결과 통합 모듈 (Result Integrator)
 
 metadata (CSV) + NLP 분석 결과 (JSON) + LLM 분석 결과 (JSON) → analysis.json
@@ -100,9 +100,9 @@ def integrate(
     output_path: str,
 ) -> dict:
     """세 데이터 소스를 통합하여 analysis.json을 생성합니다."""
-    with open(nlp_json_path, encoding="utf-8") as f:
+    with open(nlp_json_path, encoding="utf-8-sig") as f:
         nlp_data = json.load(f)
-    with open(llm_json_path, encoding="utf-8") as f:
+    with open(llm_json_path, encoding="utf-8-sig") as f:
         llm_data = json.load(f)
 
     # lecture_id 형식: "2026-02-02_kdt-backendj-21th"
@@ -144,3 +144,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     integrate(args.nlp, args.llm, args.metadata, args.output)
+
