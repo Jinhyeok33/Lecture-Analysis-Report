@@ -1,0 +1,25 @@
+﻿{
+  "lecture_id": "2026-02-02_kdt-backendj-21th",
+  "language_quality": {
+    "repeat_expressions": {
+      "이제": 42,
+      "그래서": 36,
+      "어쨌든": 11
+    },
+    "repeat_ratio": 0.18,
+    "incomplete_sentence_ratio": 0.05,
+    "speech_style_ratio": {
+      "formal": 0.92,
+      "informal": 0.08
+    }
+  },
+
+  "concept_clarity_metrics": {
+    "speech_rate_wpm": 176
+  },
+
+
+  "interaction_metrics": {
+    "understanding_question_count": 21
+  }
+}

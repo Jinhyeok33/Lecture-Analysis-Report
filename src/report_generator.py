@@ -1,0 +1,5 @@
+﻿"""Backward-compatible wrapper for reporting module."""
+
+from src.reporting.report_generator import generate_report
+
+__all__ = ["generate_report"]

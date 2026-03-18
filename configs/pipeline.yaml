@@ -1,0 +1,12 @@
+﻿paths:
+  raw_dir: data/raw
+  preprocessed_dir: data/preprocessed
+  metadata_dir: data/metadata
+  nlp_output_dir: data/outputs/nlp
+  llm_output_dir: data/outputs/llm
+  integrated_output_dir: data/outputs/integrated
+  report_output_dir: data/outputs/reports
+
+pipeline:
+  lecture_id_format: "YYYY-MM-DD_course-id"
+  strict_relative_paths: true
