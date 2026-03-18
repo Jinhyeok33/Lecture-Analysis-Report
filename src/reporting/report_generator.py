@@ -146,7 +146,7 @@ def score_label(score: float) -> str:
 
 
 def cat_avg(cat_scores: dict) -> float:
-    vals = list(cat_scores.values())
+    vals = [v for v in cat_scores.values() if isinstance(v, (int, float))]
     return round(sum(vals) / len(vals), 2) if vals else 0.0
 
 
@@ -399,6 +399,8 @@ def chart_category_scores(summary_scores: dict) -> io.BytesIO | None:
     all_items: list[tuple[str, float, str]] = []  # (label, score, color)
     for cat_key, (cat_name, color) in cat_display.items():
         for item_key, score in summary_scores.get(cat_key, {}).items():
+            if not isinstance(score, (int, float)):
+                continue
             label = f"[{cat_name}]  {label_map.get(item_key, item_key)}"
             all_items.append((label, score, color))
 
@@ -882,7 +884,7 @@ def build_insights(analysis: dict, s: dict, reg: str, bold: str) -> list:
 
 def generate_report(analysis_json_path: str, output_pdf_path: str) -> None:
     """analysis.json을 읽어 PDF 리포트를 생성합니다."""
-    with open(analysis_json_path, encoding="utf-8") as f:
+    with open(analysis_json_path, encoding="utf-8-sig") as f:
         data = json.load(f)
 
     setup_matplotlib_korean()
@@ -890,6 +892,10 @@ def generate_report(analysis_json_path: str, output_pdf_path: str) -> None:
 
     out = Path(output_pdf_path)
     out.parent.mkdir(parents=True, exist_ok=True)
+
+    if out.exists():
+        print(f"Report reuse: {out}")
+        return
 
     doc = SimpleDocTemplate(
         str(out),

@@ -1,52 +1,16 @@
-﻿"""
-결과 통합 모듈 (Result Integrator)
+"""Result integrator: metadata + NLP JSON + LLM JSON -> integrated JSON."""
 
-metadata (CSV) + NLP 분석 결과 (JSON) + LLM 분석 결과 (JSON) → analysis.json
+from __future__ import annotations
 
-analysis.json 출력 형식:
-{
-  "lecture_id": "2026-02-02_kdt-backendj-21th",
-  "metadata": {
-    "course_id": str,
-    "course_name": str,
-    "date": str,
-    "instructor": str,
-    "sub_instructor": str,
-    "sessions": [
-      {"time": str, "subject": str, "content": str},
-      ...
-    ]
-  },
-  "analysis": {
-    "language_quality": {
-      "repeat_expressions": {word: count},
-      "repeat_ratio": float,
-      "incomplete_sentence_ratio": float,
-      "speech_style_ratio": {"formal": float, "informal": float}
-    },
-    "concept_clarity_metrics": {"speech_rate_wpm": int},
-    "interaction_metrics": {"understanding_question_count": int},
-    "summary_scores": {
-      "lecture_structure": {item: score},
-      "concept_clarity": {item: score},
-      "practice_linkage": {item: score},
-      "interaction": {item: score}
-    },
-    "overall_strengths": [str],
-    "overall_issues": [str],
-    "overall_evidences": [str]
-  }
-}
-"""
-
-import json
-import csv
 import argparse
+import csv
+import json
 from pathlib import Path
+
+from src.common.naming import lecture_id_from_artifact_path
 
 
 def load_metadata(csv_path: str, lecture_date: str, course_id: str) -> dict:
-    """CSV에서 해당 날짜/과정의 메타데이터와 세션 목록을 로드합니다."""
     sessions = []
     base_metadata = {}
 
@@ -71,16 +35,13 @@ def load_metadata(csv_path: str, lecture_date: str, course_id: str) -> dict:
                 )
 
     if not base_metadata:
-        raise ValueError(
-            f"메타데이터를 찾을 수 없습니다: date={lecture_date}, course_id={course_id}"
-        )
+        raise ValueError(f"메타데이터를 찾을 수 없습니다: date={lecture_date}, course_id={course_id}")
 
     base_metadata["sessions"] = sessions
     return base_metadata
 
 
 def merge_analyses(nlp_data: dict, llm_data: dict) -> dict:
-    """NLP 출력과 LLM 출력을 하나의 analysis 객체로 병합합니다."""
     llm_agg = llm_data.get("llm_aggregated_analysis", {})
     return {
         "language_quality": nlp_data.get("language_quality", {}),
@@ -99,17 +60,21 @@ def integrate(
     metadata_csv_path: str,
     output_path: str,
 ) -> dict:
-    """세 데이터 소스를 통합하여 analysis.json을 생성합니다."""
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    # 이미 통합 결과가 있으면 바로 재사용
+    if out.exists():
+        with open(out, encoding="utf-8-sig") as f:
+            return json.load(f)
+
     with open(nlp_json_path, encoding="utf-8-sig") as f:
         nlp_data = json.load(f)
     with open(llm_json_path, encoding="utf-8-sig") as f:
         llm_data = json.load(f)
 
-    # lecture_id 형식: "2026-02-02_kdt-backendj-21th"
-    lecture_id = nlp_data.get("lecture_id", "")
-    parts = lecture_id.split("_", 1)
-    lecture_date = parts[0] if len(parts) > 0 else ""
-    course_id = parts[1] if len(parts) > 1 else ""
+    lecture_id = nlp_data.get("lecture_id") or lecture_id_from_artifact_path(nlp_json_path)
+    lecture_date, course_id = lecture_id.split("_", 1)
 
     metadata = load_metadata(metadata_csv_path, lecture_date, course_id)
     analysis = merge_analyses(nlp_data, llm_data)
@@ -120,8 +85,6 @@ def integrate(
         "analysis": analysis,
     }
 
-    out = Path(output_path)
-    out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
 
@@ -130,18 +93,11 @@ def integrate(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="결과 통합 모듈 (NLP + LLM + metadata → analysis.json)"
-    )
+    parser = argparse.ArgumentParser(description="결과 통합 모듈 (NLP + LLM + metadata -> integrated JSON)")
     parser.add_argument("--nlp", required=True, help="NLP 분석 결과 JSON 파일 경로")
     parser.add_argument("--llm", required=True, help="LLM 분석 결과 JSON 파일 경로")
-    parser.add_argument(
-        "--metadata", required=True, help="강의 메타데이터 CSV 파일 경로"
-    )
-    parser.add_argument(
-        "--output", required=True, help="출력 analysis.json 파일 경로"
-    )
+    parser.add_argument("--metadata", required=True, help="강의 메타데이터 CSV 파일 경로")
+    parser.add_argument("--output", required=True, help="출력 integrated JSON 파일 경로")
     args = parser.parse_args()
 
     integrate(args.nlp, args.llm, args.metadata, args.output)
-

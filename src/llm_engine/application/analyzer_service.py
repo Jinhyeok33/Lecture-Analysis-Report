@@ -1,4 +1,4 @@
-﻿"""강의 스크립트 분석을 위한 고수준 파이프라인 (오케스트레이터)."""
+"""강의 스크립트 분석을 위한 고수준 파이프라인 (오케스트레이터)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import asyncio
 import sys
 import json
 import logging
-import re
 import concurrent.futures
 from pathlib import Path
 
@@ -24,39 +23,15 @@ from src.llm_engine.application.chunk_processor import ChunkProcessor
 from src.llm_engine.application.aggregator import ResultAggregator
 from src.llm_engine.application.prompts import build_user_prompt, SYSTEM_PROMPT
 from src.llm_engine.application.validation import validate_evidence
+from src.common.naming import (
+    lecture_id_from_transcript_path,
+    llm_chunks_json_path,
+    llm_json_path,
+)
 
 logger = logging.getLogger(__name__)
 
 PREVIOUS_CHUNK_TAIL_MAX_CHARS = 1500
-
-def normalize_lecture_id(stem: str) -> str:
-    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})(.*)$", stem)
-    if m:
-        return f"{m.group(1)[2:]}{m.group(2)}{m.group(3)}{m.group(4)}"
-    return stem
-
-def get_lecture_id_with_run_number(output_dir: Path, base_lecture_id: str) -> str:
-    if not output_dir.exists():
-        return f"{base_lecture_id}_1"
-        
-    prefix = f"{base_lecture_id}_"
-    run_numbers: list[int] = []
-    
-    for p in output_dir.iterdir():
-        if not p.is_file() or not p.name.endswith("_summary.json"):
-            continue
-        name = p.stem
-        if name.startswith(prefix):
-            rest = name[len(prefix) :]
-            num_part = rest.split("_")[0]
-            if num_part.isdigit():
-                run_numbers.append(int(num_part))
-        elif name == f"{base_lecture_id}_summary":
-            run_numbers.append(1)
-            
-    if not run_numbers:
-        return f"{base_lecture_id}_1"
-    return f"{base_lecture_id}_{max(run_numbers) + 1}"
 
 class LectureAnalyzerService:
     def __init__(
@@ -250,8 +225,8 @@ class LectureAnalyzerService:
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        chunk_file = output_path / f"{lecture_id}_chunks.json"
-        aggregated_file = output_path / f"{lecture_id}_summary.json"
+        chunk_file = llm_chunks_json_path(output_path, lecture_id)
+        aggregated_file = llm_json_path(output_path, lecture_id)
 
         with chunk_file.open("w", encoding="utf-8") as handle:
             json.dump([item.model_dump() for item in chunk_results], handle, ensure_ascii=False, indent=2)
@@ -271,12 +246,8 @@ class LectureAnalyzerService:
         use_async: bool = True,
         max_concurrency: int = 3,
     ) -> tuple[list[ChunkResult], AggregatedResult] | tuple[list[ChunkResult], AggregatedResult, Path, Path]:
-        base_id = lecture_id or normalize_lecture_id(Path(transcript_path).stem)
-        
-        if output_dir:
-            lid = get_lecture_id_with_run_number(Path(output_dir), base_id)
-        else:
-            lid = base_id
+        base_id = lecture_id or lecture_id_from_transcript_path(transcript_path)
+        lid = base_id
 
         chunk_results, aggregated = self.process_lecture(
             lecture_id=lid,

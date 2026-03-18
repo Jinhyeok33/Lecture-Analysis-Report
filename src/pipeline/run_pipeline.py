@@ -1,4 +1,4 @@
-﻿"""Unified pipeline runner for preprocessing, NLP, LLM, integration, and report generation."""
+"""Unified pipeline runner for preprocessing, NLP, LLM, integration, and report generation."""
 
 from __future__ import annotations
 
@@ -10,6 +10,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
+
+from src.common.naming import (
+    integrated_json_path,
+    lecture_id_from_artifact_path,
+    lecture_id_from_transcript_path,
+    llm_json_path,
+    nlp_json_path,
+    report_pdf_path,
+)
 from src.integration.result_integrator import integrate
 from src.reporting.report_generator import generate_report
 
@@ -49,7 +59,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-report", action="store_true", help="Run report generation stage")
 
     parser.add_argument("--nlp-json", type=str, help="Existing NLP output JSON path")
-    parser.add_argument("--llm-json", type=str, help="Existing LLM output summary JSON path")
+    parser.add_argument("--llm-json", type=str, help="Existing LLM output JSON path")
     parser.add_argument("--analysis-json", type=str, help="Existing integrated analysis JSON path")
 
     parser.add_argument("--max-concurrency", type=int, default=1, help="LLM chunk concurrency")
@@ -103,13 +113,13 @@ def ensure_dirs(paths: PipelinePaths) -> None:
         p.mkdir(parents=True, exist_ok=True)
 
 
-def latest_matching(directory: Path, pattern: str) -> Path | None:
-    files = sorted(directory.glob(pattern), key=lambda p: p.stat().st_mtime)
-    return files[-1] if files else None
-
-
 def run_preprocessing(paths: PipelinePaths) -> None:
     from src.preprocessing.__main__ import main as preprocessing_main
+
+    if not os.getenv("OPENAI_API_KEY"):
+        raise RuntimeError("OPENAI_API_KEY is not set; cannot run preprocessing stage")
+    if not paths.metadata_csv.exists():
+        raise FileNotFoundError(f"Metadata CSV not found: {paths.metadata_csv}")
 
     print("[preprocess] start")
     preprocessing_main()
@@ -122,17 +132,14 @@ def run_nlp(paths: PipelinePaths) -> Path:
     if not paths.transcript.exists():
         raise FileNotFoundError(f"Transcript not found: {paths.transcript}")
 
-    lecture_id = paths.transcript.stem
-    before = set(paths.nlp_output_dir.glob(f"analysis_{lecture_id}_*.json"))
+    lecture_id = lecture_id_from_transcript_path(paths.transcript)
+    out = nlp_json_path(paths.nlp_output_dir, lecture_id)
 
     engine = IntegratedNLPEngine(output_dir=str(paths.nlp_output_dir))
     print(f"[nlp] analyze {paths.transcript.name}")
     engine.analyze_all(str(paths.transcript))
 
-    after = set(paths.nlp_output_dir.glob(f"analysis_{lecture_id}_*.json"))
-    created = sorted(after - before, key=lambda p: p.stat().st_mtime)
-    out = created[-1] if created else latest_matching(paths.nlp_output_dir, f"analysis_{lecture_id}_*.json")
-    if out is None:
+    if not out.exists():
         raise RuntimeError("NLP stage did not produce output JSON")
 
     print(f"[nlp] output: {out}")
@@ -150,24 +157,22 @@ def run_llm(paths: PipelinePaths, max_concurrency: int, continue_on_error: bool)
     if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError("OPENAI_API_KEY is not set; cannot run LLM stage")
 
+    lecture_id = lecture_id_from_transcript_path(paths.transcript)
+    out = llm_json_path(paths.llm_output_dir, lecture_id)
+
     provider = OpenAIAdapter()
     repository = LocalJsonRepository(base_dir=str(paths.repo_root / "checkpoints"))
     service = LectureAnalyzerService(provider, repository)
     processor = BatchProcessor(service)
 
     print(f"[llm] analyze {paths.transcript.name}")
-    results = processor.process_files(
+    processor.process_files(
         transcript_files=[paths.transcript],
         output_dir=paths.llm_output_dir,
         continue_on_error=continue_on_error,
         max_concurrency=max_concurrency,
     )
 
-    if not results:
-        raise RuntimeError("LLM stage returned no results")
-
-    first_key = next(iter(results.keys()))
-    out = Path(results[first_key]["aggregated_file"])
     if not out.exists():
         raise RuntimeError(f"LLM output not found: {out}")
 
@@ -183,8 +188,8 @@ def run_integration(paths: PipelinePaths, nlp_json: Path, llm_json: Path) -> Pat
     if not paths.metadata_csv.exists():
         raise FileNotFoundError(f"Metadata CSV not found: {paths.metadata_csv}")
 
-    lecture_id = read_json(nlp_json).get("lecture_id", nlp_json.stem)
-    out = paths.integrated_output_dir / f"{lecture_id}_analysis.json"
+    lecture_id = read_json(nlp_json).get("lecture_id") or lecture_id_from_artifact_path(nlp_json)
+    out = integrated_json_path(paths.integrated_output_dir, lecture_id)
 
     print(f"[integrate] nlp={nlp_json.name} llm={llm_json.name} metadata={paths.metadata_csv.name}")
     integrate(str(nlp_json), str(llm_json), str(paths.metadata_csv), str(out))
@@ -196,8 +201,8 @@ def run_report(analysis_json: Path, paths: PipelinePaths) -> Path:
     if not analysis_json.exists():
         raise FileNotFoundError(f"Analysis JSON not found: {analysis_json}")
 
-    lecture_id = read_json(analysis_json).get("lecture_id", analysis_json.stem)
-    out = paths.report_output_dir / f"{lecture_id}.pdf"
+    lecture_id = lecture_id_from_artifact_path(analysis_json)
+    out = report_pdf_path(paths.report_output_dir, lecture_id)
 
     print(f"[report] input: {analysis_json.name}")
     generate_report(str(analysis_json), str(out))
@@ -286,6 +291,7 @@ def main() -> None:
     args = parse_args()
     paths = resolve_paths(args)
     ensure_dirs(paths)
+    load_dotenv(dotenv_path=paths.repo_root / ".env")
 
     artifacts = PipelineArtifacts(transcript=paths.transcript)
 
@@ -354,4 +360,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

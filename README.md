@@ -1,4 +1,4 @@
-﻿# EduInsight AI
+# EduInsight AI
 
 Integrated lecture-quality analysis pipeline.
 
@@ -53,3 +53,21 @@ python -m src.pipeline.run_pipeline \
 
 - `--run-llm` and `--run-preprocess` require `OPENAI_API_KEY`.
 - Runner performs schema and artifact checks after stage execution.
+
+## Web test (frontend + real pipeline API)
+
+Run one server that hosts the frontend and real analysis API:
+
+```bash
+python frontend/server.py --host 127.0.0.1 --port 8000
+```
+
+Then open:
+
+- `http://127.0.0.1:8000`
+
+API routes used by the frontend:
+
+- `POST /api/analyze`
+- `GET /api/download/json?lecture_id=...`
+- `GET /api/download/pdf?lecture_id=...`
