@@ -225,3 +225,7 @@ data/outputs/**
 
 # Runtime caches
 checkpoints/
+
+# Local runtime artifacts
+output/
+tmp/
