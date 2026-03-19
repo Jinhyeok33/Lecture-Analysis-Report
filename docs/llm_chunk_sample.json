@@ -1,0 +1,43 @@
+﻿{
+    "chunk_id": 1,
+    "start_time": "09:00",
+    "end_time": "09:12",
+    "scores": {
+      "lecture_structure": {
+        "learning_objective_intro": 4,
+        "previous_lesson_linkage": 3,
+        "explanation_sequence": 4,
+        "key_point_emphasis": 3,
+        "closing_summary": 2
+      },
+      "concept_clarity": {
+        "concept_definition": 4,
+        "analogy_example_usage": 3,
+        "prerequisite_check": 3
+      },
+      "practice_linkage": {
+        "example_appropriateness": 4,
+        "practice_transition": 3,
+        "error_handling": 2
+      },
+      "interaction": {
+        "participation_induction": 2,
+        "question_response_sufficiency": 3
+      }
+    },
+    "strengths": [
+      "핵심 개념 정의가 비교적 명확함",
+      "예시가 강의 주제와 잘 연결됨"
+    ],
+    "issues": [
+      "마무리 요약이 약함",
+      "참여 유도가 제한적임"
+    ],
+    "evidence": [
+      {
+        "item": "learning_objective_intro",
+        "quote": "오늘은 데코레이터 패턴과 옵저버 패턴을 배워보겠습니다.",
+        "reason": "강의 시작에서 학습 목표를 명확히 제시함"
+      }
+    ]
+  }

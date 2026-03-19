@@ -1,0 +1,30 @@
+﻿{
+    "llm_aggregated_analysis": {
+      "summary_scores": {
+        "lecture_structure": {
+          "learning_objective_intro": 3.8,
+          "previous_lesson_linkage": 3.1,
+          "explanation_sequence": 4.0,
+          "key_point_emphasis": 3.4,
+          "closing_summary": 2.7
+        },
+        "concept_clarity": {
+          "concept_definition": 4.1,
+          "analogy_example_usage": 3.6,
+          "prerequisite_check": 3.3
+        },
+        "practice_linkage": {
+          "example_appropriateness": 4.0,
+          "practice_transition": 3.5,
+          "error_handling": 3.2
+        },
+        "interaction": {
+          "participation_induction": 2.8,
+          "question_response_sufficiency": 3.0
+        }
+      },
+      "overall_strengths": [],
+      "overall_issues": [],
+      "overall_evidences": []
+    }
+  }

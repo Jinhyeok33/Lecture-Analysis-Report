@@ -205,3 +205,19 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Project data artifacts
+data/outputs/**
+!data/outputs/
+!data/outputs/.gitkeep
+!data/outputs/nlp/
+!data/outputs/nlp/.gitkeep
+!data/outputs/llm/
+!data/outputs/llm/.gitkeep
+!data/outputs/integrated/
+!data/outputs/integrated/.gitkeep
+!data/outputs/reports/
+!data/outputs/reports/.gitkeep
+
+# Runtime caches
+checkpoints/
