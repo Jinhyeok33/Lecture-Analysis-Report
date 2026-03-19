@@ -1,1343 +1,1286 @@
 ﻿"""
-Report Generator: analysis.json → analysis.pdf
-
-강의 분석 결과를 시각적인 PDF 리포트로 변환합니다.
-
-PDF 구성:
-  1. 커버 페이지        (강의 기본 정보 + 종합 점수 요약)
-  2. 언어 표현 품질 분석  (NLP 정량 지표 + 반복 표현 차트 + 발화 스타일)
-  3. 강의 품질 종합 평가  (레이더 차트 + 카테고리별 세부 점수)
-  4. 강의 개선 인사이트   (강점 / 개선 필요 사항 + 근거)
+Generate a polished lecture-analysis PDF report from analysis JSON.
 """
 
+from __future__ import annotations
+
+import argparse
+import html
 import io
 import json
-import math
-import argparse
 from pathlib import Path
+from typing import Any
 
 import matplotlib
-import matplotlib.patches as mpatches
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
-import numpy as np
 
 matplotlib.use("Agg")
 
+import matplotlib.pyplot as plt
+import numpy as np
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.units import cm, mm
+from reportlab.lib.units import cm
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     HRFlowable,
     Image,
+    KeepTogether,
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
     Table,
     TableStyle,
-    KeepTogether,
 )
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 전역 설정
-# ──────────────────────────────────────────────────────────────────────────────
-
 PAGE_W, PAGE_H = A4
-CONTENT_W = PAGE_W - 4 * cm  # 좌우 마진 2cm씩
 
-_FONT_REGULAR = "Helvetica"
-_FONT_BOLD = "Helvetica-Bold"
-
-# ── 색상 팔레트 ──
-# Primary tones
-C_PRIMARY = colors.HexColor("#1B3A5C")       # 딥 네이비
-C_PRIMARY_LIGHT = colors.HexColor("#2E5C8A")  # 밝은 네이비
-C_ACCENT = colors.HexColor("#E8792F")         # 오렌지 액센트
-C_ACCENT_LIGHT = colors.HexColor("#F5A623")   # 밝은 오렌지
-
-# Semantic
-C_SUCCESS = colors.HexColor("#2E7D4F")
-C_SUCCESS_BG = colors.HexColor("#E8F5E9")
-C_WARNING = colors.HexColor("#E8792F")
-C_WARNING_BG = colors.HexColor("#FFF3E0")
-C_DANGER = colors.HexColor("#C0392B")
-C_DANGER_BG = colors.HexColor("#FDECEA")
-
-# Neutrals
-C_TEXT = colors.HexColor("#1A1A2E")
-C_TEXT_SECONDARY = colors.HexColor("#5A6678")
-C_BORDER = colors.HexColor("#D0D5DD")
-C_LIGHT_BG = colors.HexColor("#F8F9FC")
-C_CARD_BG = colors.HexColor("#FFFFFF")
+# Color system (vivid orange mood)
+C_PRIMARY = colors.HexColor("#FF7A00")
+C_PRIMARY_DARK = colors.HexColor("#E65E00")
+C_ACCENT = colors.HexColor("#FFA347")
+C_SURFACE = colors.HexColor("#FFF5EA")
+C_SURFACE_ALT = colors.HexColor("#FFE8CF")
+C_BORDER = colors.HexColor("#EBC79E")
+C_TEXT = colors.HexColor("#241A12")
+C_MUTED = colors.HexColor("#6B4E37")
+C_SUCCESS = colors.HexColor("#3F8F57")
+C_WARNING = colors.HexColor("#C6842F")
+C_DANGER = colors.HexColor("#BF5147")
 C_WHITE = colors.white
 
-# Chart palette
-CH_BG = "#FAFBFE"
-CH_GRID = "#E0E4EC"
-CH_PRIMARY = "#2E5C8A"
-CH_ACCENT = "#E8792F"
-CH_SUCCESS = "#2E7D4F"
-CH_DANGER = "#C0392B"
-CH_LIGHT = "#B0C4DE"
-CH_FILL = "#D6E4F0"
+CHART_BG = "#FFF7EE"
+CHART_GRID = "#E2C6A8"
+CHART_REF = "#C48D57"
+CHART_TEXT = "#6B4E37"
+CHART_LINE = "#FF7A00"
+CHART_LINE_SOFT = "#FFD7AF"
+CHART_RING_DARK = "#E65E00"
+CHART_RING_LIGHT = "#FFD7AF"
 
-CAT_COLORS = {
-    "lecture_structure": "#2E5C8A",
-    "concept_clarity": "#E8792F",
-    "practice_linkage": "#2E7D4F",
-    "interaction": "#8E44AD",
+CATEGORY_ORDER = [
+    "lecture_structure",
+    "concept_clarity",
+    "practice_linkage",
+    "interaction",
+]
+
+CATEGORY_LABELS = {
+    "lecture_structure": "강의 구조",
+    "concept_clarity": "개념 명확성",
+    "practice_linkage": "실습 연계",
+    "interaction": "상호작용",
+}
+
+SUBITEM_LABELS = {
+    "learning_objective_intro": "학습 목표 안내",
+    "previous_lesson_linkage": "이전 수업 연계",
+    "explanation_sequence": "설명 순서",
+    "key_point_emphasis": "핵심 포인트 강조",
+    "closing_summary": "마무리 요약",
+    "concept_definition": "개념 정의",
+    "analogy_example_usage": "비유/예시 활용",
+    "prerequisite_check": "선수 개념 확인",
+    "example_appropriateness": "예시 적절성",
+    "practice_transition": "실습 전환",
+    "error_handling": "오류 대응",
+    "participation_induction": "참여 유도",
+    "question_response_sufficiency": "질문 응답 충분성",
+}
+
+SUBITEM_DESCRIPTIONS = {
+    "learning_objective_intro": "수업 시작 학습 목표 안내를 확인합니다.",
+    "previous_lesson_linkage": "이전 수업 연계와 내용 설명을 확인합니다.",
+    "explanation_sequence": "설명 순서와 내용 요약을 확인합니다.",
+    "key_point_emphasis": "핵심 포인트 강조와 반복 표현을 확인합니다.",
+    "closing_summary": "마무리 요약과 핵심 내용 정리를 확인합니다.",
+    "concept_definition": "개념 정의 설명의 명확성을 확인합니다.",
+    "analogy_example_usage": "비유 예시 활용과 내용 설명을 확인합니다.",
+    "prerequisite_check": "선수 개념 확인과 수업 연계를 확인합니다.",
+    "example_appropriateness": "예시 적절성과 수업 내용 연계를 확인합니다.",
+    "practice_transition": "실습 전환과 설명 순서를 확인합니다.",
+    "error_handling": "오류 대응 설명과 내용 정리를 확인합니다.",
+    "participation_induction": "참여 유도 질문과 응답 내용을 확인합니다.",
+    "question_response_sufficiency": "질문 응답 내용과 충분성을 확인합니다.",
 }
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 폰트 등록
-# ──────────────────────────────────────────────────────────────────────────────
-
 FONT_CANDIDATES = [
-    ("MalgunGothic", "C:/Windows/Fonts/malgun.ttf"),
-    ("MalgunGothicBold", "C:/Windows/Fonts/malgunbd.ttf"),
-    ("NanumGothic", "C:/Windows/Fonts/NanumGothic.ttf"),
-    ("NanumGothicBold", "C:/Windows/Fonts/NanumGothicBold.ttf"),
-    ("NanumGothic", "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"),
-    ("NanumGothicBold", "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf"),
+    {
+        "regular_name": "MalgunGothic",
+        "bold_name": "MalgunGothicBold",
+        "regular_path": "C:/Windows/Fonts/malgun.ttf",
+        "bold_path": "C:/Windows/Fonts/malgunbd.ttf",
+        "matplotlib_family": "Malgun Gothic",
+    },
+    {
+        "regular_name": "NanumGothic",
+        "bold_name": "NanumGothicBold",
+        "regular_path": "C:/Windows/Fonts/NanumGothic.ttf",
+        "bold_path": "C:/Windows/Fonts/NanumGothicBold.ttf",
+        "matplotlib_family": "NanumGothic",
+    },
+    {
+        "regular_name": "NanumGothic",
+        "bold_name": "NanumGothicBold",
+        "regular_path": "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+        "bold_path": "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf",
+        "matplotlib_family": "NanumGothic",
+    },
 ]
 
 
-def register_korean_fonts() -> tuple[str, str]:
-    global _FONT_REGULAR, _FONT_BOLD
-
-    registered: dict[str, str] = {}
-    for name, path in FONT_CANDIDATES:
-        if Path(path).exists() and name not in registered:
-            try:
-                pdfmetrics.registerFont(TTFont(name, path))
-                registered[name] = path
-            except Exception:
-                pass
-
-    if not registered:
-        print("[경고] 한국어 폰트를 찾을 수 없습니다. Helvetica로 대체됩니다.")
-        return "Helvetica", "Helvetica-Bold"
-
-    regular = next((n for n in registered if "Bold" not in n), list(registered)[0])
-    bold = next((n for n in registered if "Bold" in n), regular)
-
-    _FONT_REGULAR = regular
-    _FONT_BOLD = bold
-    return regular, bold
+def _register_font(name: str, path: Path) -> bool:
+    if name in pdfmetrics.getRegisteredFontNames():
+        return True
+    try:
+        pdfmetrics.registerFont(TTFont(name, str(path)))
+        return True
+    except Exception:
+        return False
 
 
-def setup_matplotlib_korean():
+def register_korean_fonts() -> tuple[str, str, list[str]]:
+    for candidate in FONT_CANDIDATES:
+        reg_path = Path(candidate["regular_path"])
+        if not reg_path.exists():
+            continue
+
+        reg_name = candidate["regular_name"]
+        bold_name = candidate["bold_name"]
+
+        if not _register_font(reg_name, reg_path):
+            continue
+
+        bold_path = Path(candidate["bold_path"])
+        if bold_path.exists():
+            _register_font(bold_name, bold_path)
+        else:
+            bold_name = reg_name
+
+        return reg_name, bold_name, [candidate["matplotlib_family"]]
+
+    print("[경고] 한글 폰트를 찾지 못해 기본 폰트를 사용합니다.")
+    return "Helvetica", "Helvetica-Bold", ["DejaVu Sans"]
+
+
+def setup_matplotlib_fonts(font_families: list[str]) -> None:
     matplotlib.rcParams["font.family"] = "sans-serif"
-    matplotlib.rcParams["font.sans-serif"] = [
-        "Malgun Gothic",
-        "NanumGothic",
+    matplotlib.rcParams["font.sans-serif"] = font_families + [
         "AppleGothic",
+        "Arial Unicode MS",
         "DejaVu Sans",
     ]
     matplotlib.rcParams["axes.unicode_minus"] = False
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 점수 유틸리티
-# ──────────────────────────────────────────────────────────────────────────────
+def as_text(value: Any, fallback: str = "-") -> str:
+    if value is None:
+        return fallback
+    text = str(value).strip()
+    return text if text else fallback
 
 
-def score_color(score: float) -> colors.Color:
-    if score >= 4.0:
-        return C_SUCCESS
-    elif score >= 3.0:
-        return C_WARNING
-    else:
-        return C_DANGER
+def esc(value: Any, fallback: str = "-") -> str:
+    return html.escape(as_text(value, fallback)).replace("\n", "<br/>")
 
 
-def score_hex(score: float) -> str:
-    if score >= 4.0:
-        return CH_SUCCESS
-    elif score >= 3.0:
-        return CH_ACCENT
-    else:
-        return CH_DANGER
-
-
-def score_bg(score: float) -> colors.Color:
-    if score >= 4.0:
-        return C_SUCCESS_BG
-    elif score >= 3.0:
-        return C_WARNING_BG
-    else:
-        return C_DANGER_BG
-
-
-def score_label(score: float) -> str:
-    if score >= 4.5:
-        return "매우 우수"
-    elif score >= 4.0:
-        return "우수"
-    elif score >= 3.5:
-        return "양호"
-    elif score >= 3.0:
-        return "보통"
-    elif score >= 2.0:
-        return "미흡"
-    else:
-        return "개선 필요"
-
-
-def to_number(value, default: float = 0.0) -> float:
+def as_float(value: Any, default: float = 0.0) -> float:
     try:
-        num = float(value)
-        if math.isnan(num):
-            return default
-        return num
+        return float(value)
     except (TypeError, ValueError):
         return default
 
 
-def cat_avg(cat_scores: dict) -> float:
-    if not isinstance(cat_scores, dict):
+def average(values: list[float]) -> float:
+    valid = [v for v in values if isinstance(v, (int, float))]
+    if not valid:
         return 0.0
-    vals = [to_number(v, 0.0) for v in cat_scores.values()]
-    return round(sum(vals) / len(vals), 2) if vals else 0.0
+    return round(sum(valid) / len(valid), 2)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 스타일 팩토리
-# ──────────────────────────────────────────────────────────────────────────────
+def score_color_hex(score: float) -> str:
+    if score >= 4.0:
+        return "#2C9A5E"
+    if score >= 3.0:
+        return "#C9892D"
+    return "#C94F4F"
 
 
-def make_styles(reg: str, bold: str) -> dict:
-    def ps(name, **kw):
-        return ParagraphStyle(name, **kw)
+def score_grade(score: float) -> str:
+    if score >= 4.5:
+        return "매우 우수"
+    if score >= 4.0:
+        return "우수"
+    if score >= 3.5:
+        return "양호"
+    if score >= 3.0:
+        return "보통"
+    if score >= 2.0:
+        return "개선 필요"
+    return "위험"
+
+
+def pct(value: float) -> str:
+    return f"{value * 100:.1f}%"
+
+
+def category_averages(summary_scores: dict[str, dict[str, float]]) -> dict[str, float]:
+    return {
+        key: average([as_float(v) for v in summary_scores.get(key, {}).values()])
+        for key in CATEGORY_ORDER
+    }
+
+
+def overall_score(cat_avgs: dict[str, float]) -> float:
+    scores = [v for v in cat_avgs.values() if v > 0]
+    return average(scores)
+
+
+def flatten_scores(summary_scores: dict[str, dict[str, float]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for cat_key in CATEGORY_ORDER:
+        cat_name = CATEGORY_LABELS.get(cat_key, cat_key)
+        for item_key, value in summary_scores.get(cat_key, {}).items():
+            score = as_float(value)
+            rows.append(
+                {
+                    "category_key": cat_key,
+                    "category": cat_name,
+                    "item_key": item_key,
+                    "item": SUBITEM_LABELS.get(item_key, item_key),
+                    "score": score,
+                }
+            )
+    return rows
+
+
+def make_styles(reg: str, bold: str) -> dict[str, ParagraphStyle]:
+    def ps(name: str, **kwargs: Any) -> ParagraphStyle:
+        return ParagraphStyle(name, **kwargs)
 
     return {
-        # Cover
         "cover_title": ps(
-            "CoverTitle", fontName=bold, fontSize=28, textColor=C_WHITE,
-            alignment=TA_CENTER, leading=38,
+            "CoverTitle",
+            fontName=bold,
+            fontSize=27,
+            leading=34,
+            textColor=C_WHITE,
+            alignment=TA_LEFT,
+            wordWrap="CJK",
         ),
         "cover_sub": ps(
-            "CoverSub", fontName=reg, fontSize=13, textColor=colors.HexColor("#B0C4DE"),
-            alignment=TA_CENTER, spaceAfter=4,
+            "CoverSub",
+            fontName=reg,
+            fontSize=11,
+            leading=16,
+            textColor=colors.HexColor("#FFE5CF"),
+            alignment=TA_LEFT,
+            wordWrap="CJK",
         ),
-        # Section headers
         "section_title": ps(
-            "SectionTitle", fontName=bold, fontSize=15, textColor=C_PRIMARY,
-            spaceBefore=4, spaceAfter=8, leading=22,
+            "SectionTitle",
+            fontName=bold,
+            fontSize=16,
+            leading=22,
+            textColor=C_WHITE,
+            alignment=TA_LEFT,
+            wordWrap="CJK",
         ),
-        "section_desc": ps(
-            "SectionDesc", fontName=reg, fontSize=9, textColor=C_TEXT_SECONDARY,
-            spaceAfter=12, leading=14,
+        "section_sub": ps(
+            "SectionSub",
+            fontName=reg,
+            fontSize=10,
+            leading=15,
+            textColor=colors.HexColor("#FFE5CF"),
+            alignment=TA_LEFT,
+            wordWrap="CJK",
         ),
-        "subsection": ps(
-            "Subsection", fontName=bold, fontSize=11, textColor=C_PRIMARY,
-            spaceBefore=10, spaceAfter=6, leading=16,
+        "title": ps(
+            "Title",
+            fontName=bold,
+            fontSize=13,
+            leading=18,
+            textColor=C_TEXT,
+            alignment=TA_LEFT,
+            wordWrap="CJK",
         ),
-        # Body
         "body": ps(
-            "Body", fontName=reg, fontSize=9.5, textColor=C_TEXT,
-            spaceAfter=4, leading=15, alignment=TA_JUSTIFY,
-        ),
-        "body_bold": ps(
-            "BodyBold", fontName=bold, fontSize=9.5, textColor=C_TEXT,
-            spaceAfter=4, leading=15,
+            "Body",
+            fontName=reg,
+            fontSize=10.5,
+            leading=16,
+            textColor=C_TEXT,
+            alignment=TA_LEFT,
+            wordWrap="CJK",
         ),
         "small": ps(
-            "Small", fontName=reg, fontSize=8.5, textColor=C_TEXT_SECONDARY,
-            spaceAfter=3, leading=13,
+            "Small",
+            fontName=reg,
+            fontSize=9,
+            leading=14,
+            textColor=C_MUTED,
+            alignment=TA_LEFT,
+            wordWrap="CJK",
+        ),
+        "bullet": ps(
+            "Bullet",
+            fontName=reg,
+            fontSize=10.2,
+            leading=16,
+            textColor=C_TEXT,
+            leftIndent=12,
+            firstLineIndent=-8,
+            wordWrap="CJK",
         ),
         "evidence": ps(
-            "Evidence", fontName=reg, fontSize=8.5, textColor=C_TEXT_SECONDARY,
-            leading=13, leftIndent=12, spaceAfter=4,
+            "Evidence",
+            fontName=reg,
+            fontSize=9.2,
+            leading=14,
+            textColor=C_MUTED,
+            leftIndent=16,
+            wordWrap="CJK",
         ),
-        # Badges
-        "badge_label": ps(
-            "BadgeLabel", fontName=reg, fontSize=8, textColor=C_TEXT_SECONDARY,
-            alignment=TA_CENTER, leading=12,
+        "metric_label": ps(
+            "MetricLabel",
+            fontName=reg,
+            fontSize=9,
+            leading=12,
+            textColor=C_MUTED,
+            alignment=TA_CENTER,
+            wordWrap="CJK",
         ),
-        "badge_value": ps(
-            "BadgeValue", fontName=bold, fontSize=20, textColor=C_PRIMARY,
-            alignment=TA_CENTER, leading=26,
+        "metric_value": ps(
+            "MetricValue",
+            fontName=bold,
+            fontSize=21,
+            leading=26,
+            textColor=C_PRIMARY,
+            alignment=TA_CENTER,
+            wordWrap="CJK",
         ),
-        "badge_unit": ps(
-            "BadgeUnit", fontName=reg, fontSize=7.5, textColor=C_TEXT_SECONDARY,
-            alignment=TA_CENTER, leading=11,
+        "metric_help": ps(
+            "MetricHelp",
+            fontName=reg,
+            fontSize=8.5,
+            leading=12,
+            textColor=C_MUTED,
+            alignment=TA_CENTER,
+            wordWrap="CJK",
         ),
-        # Tables
-        "th": ps(
-            "TH", fontName=bold, fontSize=9, textColor=C_WHITE,
-            alignment=TA_CENTER, leading=14,
+        "table_header": ps(
+            "TableHeader",
+            fontName=bold,
+            fontSize=9,
+            leading=12,
+            textColor=C_WHITE,
+            alignment=TA_CENTER,
+            wordWrap="CJK",
         ),
-        "td": ps(
-            "TD", fontName=reg, fontSize=9, textColor=C_TEXT, leading=14,
+        "table_cell": ps(
+            "TableCell",
+            fontName=reg,
+            fontSize=9.3,
+            leading=13.5,
+            textColor=C_TEXT,
+            alignment=TA_LEFT,
+            wordWrap="CJK",
         ),
-        "td_center": ps(
-            "TDCenter", fontName=reg, fontSize=9, textColor=C_TEXT,
-            alignment=TA_CENTER, leading=14,
+        "table_center": ps(
+            "TableCenter",
+            fontName=reg,
+            fontSize=9.2,
+            leading=13,
+            textColor=C_TEXT,
+            alignment=TA_CENTER,
+            wordWrap="CJK",
         ),
-        # Insights
-        "insight_title": ps(
-            "InsightTitle", fontName=bold, fontSize=10.5, textColor=C_WHITE,
-            alignment=TA_LEFT, leading=16,
-        ),
-        "insight_item": ps(
-            "InsightItem", fontName=reg, fontSize=9.5, textColor=C_TEXT,
-            leading=15, spaceAfter=2,
-        ),
-        "insight_evidence": ps(
-            "InsightEvidence", fontName=reg, fontSize=8.5,
-            textColor=C_TEXT_SECONDARY, leading=13, leftIndent=14, spaceAfter=6,
+        "table_number": ps(
+            "TableNumber",
+            fontName=bold,
+            fontSize=9.3,
+            leading=13,
+            textColor=C_TEXT,
+            alignment=TA_RIGHT,
+            wordWrap="CJK",
         ),
     }
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 차트 생성 (aspect ratio 엄격 유지)
-# ──────────────────────────────────────────────────────────────────────────────
-
-# 모든 차트는 (fig_w_inch, fig_h_inch) 와 Image(width_cm, height_cm) 비율을 일치시킴
-
-
-def chart_radar(summary_scores: dict, fig_w=5.0, fig_h=5.0) -> io.BytesIO:
-    """4개 카테고리 평균 점수 레이더 차트."""
-    cat_map = {
-        "lecture_structure": "강의 구조",
-        "concept_clarity": "개념 명확성",
-        "practice_linkage": "실습 연계",
-        "interaction": "상호작용",
-    }
-    labels = list(cat_map.values())
-    cat_keys = list(cat_map.keys())
-    values = [cat_avg(summary_scores.get(k, {})) for k in cat_keys]
-
-    N = len(labels)
-    angles = [n / N * 2 * math.pi for n in range(N)]
-    angles += angles[:1]
-    values_plot = values + [values[0]]
-
-    fig, ax = plt.subplots(figsize=(fig_w, fig_h), subplot_kw=dict(polar=True))
-    fig.patch.set_facecolor("white")
-    ax.set_facecolor("#F0F4FA")
-
-    ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(labels, fontsize=11, fontweight="bold", color="#1A1A2E")
-    ax.set_ylim(0, 5)
-    ax.set_yticks([1, 2, 3, 4, 5])
-    ax.set_yticklabels(["1", "2", "3", "4", "5"], fontsize=7, color="#8A95A8")
-    ax.grid(color="#C8D0DC", linewidth=0.6, linestyle="-", alpha=0.7)
-    ax.spines["polar"].set_color("#C8D0DC")
-
-    # 기준선 3.0
-    ref = [3.0] * (N + 1)
-    ax.plot(angles, ref, "--", linewidth=1.2, color="#A0AAB8", alpha=0.7, label="기준 (3.0)")
-
-    # 데이터
-    ax.plot(angles, values_plot, "o-", linewidth=2.5, color=CH_PRIMARY,
-            markersize=8, markerfacecolor="white", markeredgewidth=2.5,
-            markeredgecolor=CH_PRIMARY, zorder=5)
-    ax.fill(angles, values_plot, alpha=0.15, color=CH_PRIMARY)
-
-    for angle, val, cat_key in zip(angles[:-1], values, cat_keys):
-        color = CAT_COLORS.get(cat_key, CH_PRIMARY)
-        offset = 0.45
-        ax.text(
-            angle, val + offset, f"{val:.1f}",
-            ha="center", va="center", fontsize=10,
-            color=color, fontweight="bold",
-            bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor=color,
-                      alpha=0.9, linewidth=0.8),
+def page_callback(reg_font: str):
+    def on_page(canvas, doc) -> None:
+        canvas.saveState()
+        canvas.setStrokeColor(C_BORDER)
+        canvas.setLineWidth(0.7)
+        canvas.line(
+            doc.leftMargin,
+            doc.bottomMargin - 0.22 * cm,
+            PAGE_W - doc.rightMargin,
+            doc.bottomMargin - 0.22 * cm,
         )
 
-    plt.tight_layout(pad=1.0)
+        canvas.setFont(reg_font, 8.5)
+        canvas.setFillColor(C_MUTED)
+        canvas.drawString(doc.leftMargin, doc.bottomMargin - 0.7 * cm, "EduInsight AI | 강의 분석 리포트")
+        canvas.drawRightString(PAGE_W - doc.rightMargin, doc.bottomMargin - 0.7 * cm, str(doc.page))
+        canvas.restoreState()
+
+    return on_page
+
+
+def section_header(title: str, subtitle: str, styles: dict[str, ParagraphStyle], width: float) -> Table:
+    table = Table(
+        [
+            [Paragraph(esc(title), styles["section_title"])],
+            [Paragraph(esc(subtitle), styles["section_sub"])],
+        ],
+        colWidths=[width],
+    )
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), C_PRIMARY),
+                ("TOPPADDING", (0, 0), (-1, 0), 12),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 2),
+                ("TOPPADDING", (0, 1), (-1, 1), 0),
+                ("BOTTOMPADDING", (0, 1), (-1, 1), 12),
+                ("LEFTPADDING", (0, 0), (-1, -1), 14),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 14),
+            ]
+        )
+    )
+    return table
+
+
+def metric_card(
+    label: str,
+    value: str,
+    caption: str,
+    styles: dict[str, ParagraphStyle],
+    width: float,
+    bg: colors.Color = C_SURFACE,
+) -> Table:
+    card = Table(
+        [
+            [Paragraph(esc(label), styles["metric_label"])],
+            [Paragraph(esc(value), styles["metric_value"])],
+            [Paragraph(esc(caption), styles["metric_help"])],
+        ],
+        colWidths=[width],
+    )
+    card.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), bg),
+                ("BOX", (0, 0), (-1, -1), 0.8, C_BORDER),
+                ("TOPPADDING", (0, 0), (-1, 0), 9),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 2),
+                ("TOPPADDING", (0, 1), (-1, 1), 2),
+                ("BOTTOMPADDING", (0, 1), (-1, 1), 2),
+                ("TOPPADDING", (0, 2), (-1, 2), 2),
+                ("BOTTOMPADDING", (0, 2), (-1, 2), 8),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    return card
+
+
+def fig_to_buffer(fig, dpi: int = 220) -> io.BytesIO:
     buf = io.BytesIO()
-    plt.savefig(buf, format="png", dpi=180, bbox_inches="tight", facecolor="white")
+    fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight", facecolor="white")
     plt.close(fig)
     buf.seek(0)
     return buf
 
 
-def chart_repeat_expressions(repeat_expr: dict, top_n: int = 8) -> io.BytesIO | None:
-    """반복 표현 가로 막대 차트."""
-    if not repeat_expr:
+def fit_image(buf: io.BytesIO, max_width: float, max_height: float, h_align: str = "CENTER") -> Image:
+    buf.seek(0)
+    img_reader = ImageReader(buf)
+    orig_w, orig_h = img_reader.getSize()
+    scale = min(max_width / orig_w, max_height / orig_h)
+    scale = max(0.01, min(scale, 1.6))
+    image = Image(buf, width=orig_w * scale, height=orig_h * scale)
+    image.hAlign = h_align
+    return image
+
+def chart_radar(cat_avgs: dict[str, float]) -> io.BytesIO | None:
+    labels = [CATEGORY_LABELS[key] for key in CATEGORY_ORDER]
+    values = [cat_avgs.get(key, 0.0) for key in CATEGORY_ORDER]
+    if not any(v > 0 for v in values):
         return None
 
-    items = sorted(repeat_expr.items(), key=lambda x: x[1], reverse=True)[:top_n]
-    labels = [item[0] for item in items]
-    values = [item[1] for item in items]
-    max_v = max(values) if values else 1
+    n = len(labels)
+    angles = np.linspace(0, 2 * np.pi, n, endpoint=False).tolist()
+    values_closed = values + values[:1]
+    angles_closed = angles + angles[:1]
 
-    fig_h = max(2.5, len(labels) * 0.45 + 0.8)
-    fig, ax = plt.subplots(figsize=(5.5, fig_h))
-    fig.patch.set_facecolor("white")
-    ax.set_facecolor("white")
+    fig, ax = plt.subplots(figsize=(5.5, 5.0), subplot_kw={"polar": True})
+    ax.set_facecolor(CHART_BG)
 
-    bar_colors = []
-    for v in values:
-        ratio = v / max_v
-        if ratio >= 0.7:
-            bar_colors.append(CH_DANGER)
-        elif ratio >= 0.4:
-            bar_colors.append(CH_ACCENT)
-        else:
-            bar_colors.append(CH_LIGHT)
+    ax.set_xticks(angles)
+    ax.set_xticklabels(labels, fontsize=10)
+    ax.set_ylim(0, 5)
+    ax.set_yticks([1, 2, 3, 4, 5])
+    ax.set_yticklabels(["1", "2", "3", "4", "5"], fontsize=8, color=CHART_TEXT)
+    ax.grid(color=CHART_GRID, linestyle="--", linewidth=0.8)
+    ax.spines["polar"].set_color(CHART_GRID)
 
-    y = list(range(len(labels)))
-    bars = ax.barh(y, values, color=bar_colors, height=0.55,
-                   edgecolor="white", linewidth=0.5, zorder=3)
+    base_line = [3.0] * n + [3.0]
+    ax.plot(angles_closed, base_line, color=CHART_REF, linewidth=1.2, linestyle="--")
 
-    ax.set_yticks(y)
-    ax.set_yticklabels(labels, fontsize=10, color="#1A1A2E")
-    ax.invert_yaxis()
+    ax.plot(angles_closed, values_closed, color=CHART_LINE, linewidth=2.4, marker="o")
+    ax.fill(angles_closed, values_closed, color=CHART_LINE, alpha=0.24)
 
-    for bar, val in zip(bars, values):
+    for angle, value in zip(angles, values):
         ax.text(
-            bar.get_width() + max_v * 0.03,
-            bar.get_y() + bar.get_height() / 2,
-            f"{val}회", va="center", ha="left", fontsize=9, color="#5A6678",
+            angle,
+            min(value + 0.45, 5.25),
+            f"{value:.2f}",
+            ha="center",
+            va="center",
+            fontsize=8.5,
+            color=score_color_hex(value),
             fontweight="bold",
         )
 
-    ax.set_xlim(0, max_v * 1.25)
-    ax.set_xlabel("사용 횟수", fontsize=8, color="#5A6678")
-    ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-    for spine in ["top", "right", "left"]:
+    fig.tight_layout()
+    return fig_to_buffer(fig)
+
+
+def chart_repeat_expressions(repeat_expr: dict[str, Any], top_n: int = 10) -> io.BytesIO | None:
+    if not repeat_expr:
+        return None
+
+    items = sorted(((as_text(k), int(v)) for k, v in repeat_expr.items()), key=lambda x: x[1], reverse=True)[:top_n]
+    if not items:
+        return None
+
+    labels = [item[0] for item in items]
+    values = [item[1] for item in items]
+    max_value = max(values)
+
+    fig_h = max(3.8, len(items) * 0.5 + 1.6)
+    fig, ax = plt.subplots(figsize=(7.4, fig_h))
+    ax.set_facecolor(CHART_BG)
+
+    y = np.arange(len(labels))
+    bar_colors = [CHART_LINE if idx == 0 else CHART_LINE_SOFT for idx in range(len(labels))]
+    bars = ax.barh(y, values, color=bar_colors, edgecolor="white", linewidth=0.7)
+    ax.invert_yaxis()
+
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=10)
+    ax.set_xlim(0, max_value * 1.22)
+    ax.set_xlabel("등장 횟수", fontsize=9, color=CHART_TEXT)
+
+    for bar, value in zip(bars, values):
+        ax.text(
+            bar.get_width() + max_value * 0.02,
+            bar.get_y() + bar.get_height() / 2,
+            f"{value}회",
+            va="center",
+            fontsize=9,
+            color=CHART_TEXT,
+        )
+
+    ax.tick_params(axis="x", labelsize=8, colors=CHART_TEXT)
+    ax.tick_params(axis="y", labelsize=10, colors=CHART_TEXT)
+    for spine in ["top", "right"]:
         ax.spines[spine].set_visible(False)
-    ax.spines["bottom"].set_color(CH_GRID)
-    ax.tick_params(axis="x", labelsize=7, colors="#8A95A8")
-    ax.tick_params(axis="y", length=0)
-    ax.grid(axis="x", color=CH_GRID, linewidth=0.5, alpha=0.5, zorder=0)
+    ax.spines["left"].set_color(CHART_GRID)
+    ax.spines["bottom"].set_color(CHART_GRID)
 
-    plt.tight_layout()
-    buf = io.BytesIO()
-    plt.savefig(buf, format="png", dpi=180, bbox_inches="tight", facecolor="white")
-    plt.close(fig)
-    buf.seek(0)
-    return buf
+    fig.tight_layout()
+    return fig_to_buffer(fig)
 
 
-def chart_speech_style(speech_style_ratio: dict) -> io.BytesIO | None:
-    """발화 스타일 도넛 차트."""
-    formal = speech_style_ratio.get("formal", 0)
-    informal = speech_style_ratio.get("informal", 0)
+def chart_speech_style(speech_ratio: dict[str, Any]) -> io.BytesIO | None:
+    formal = as_float(speech_ratio.get("formal", 0.0))
+    informal = as_float(speech_ratio.get("informal", 0.0))
     if formal == 0 and informal == 0:
         return None
 
-    fig, ax = plt.subplots(figsize=(3.0, 3.0))
-    fig.patch.set_facecolor("white")
-
-    wedge_colors = [CH_PRIMARY, "#D6E4F0"]
-    wedges, _ = ax.pie(
+    fig, ax = plt.subplots(figsize=(4.1, 4.1))
+    ax.pie(
         [formal, informal],
-        colors=wedge_colors,
+        colors=[CHART_RING_DARK, CHART_RING_LIGHT],
         startangle=90,
-        wedgeprops=dict(width=0.45, edgecolor="white", linewidth=2.5),
-        counterclock=False,
+        wedgeprops={"width": 0.48, "edgecolor": "white", "linewidth": 2},
     )
-    ax.text(0, 0.08, f"{formal * 100:.0f}%", ha="center", va="center",
-            fontsize=18, fontweight="bold", color=CH_PRIMARY)
-    ax.text(0, -0.22, "격식체", ha="center", va="center",
-            fontsize=9, color="#5A6678")
-
-    ax.legend(["격식체", "비격식체"], loc="lower center",
-              bbox_to_anchor=(0.5, -0.08), fontsize=8, frameon=False, ncol=2,
-              handlelength=1.2, columnspacing=1.0)
-
-    plt.tight_layout(pad=0.5)
-    buf = io.BytesIO()
-    plt.savefig(buf, format="png", dpi=180, bbox_inches="tight", facecolor="white")
-    plt.close(fig)
-    buf.seek(0)
-    return buf
+    ax.text(0, 0, f"{formal * 100:.0f}%\n격식체", ha="center", va="center", fontsize=12, fontweight="bold")
+    ax.legend(["격식체", "비격식체"], loc="lower center", bbox_to_anchor=(0.5, -0.16), ncol=2, frameon=False, fontsize=9)
+    fig.tight_layout()
+    return fig_to_buffer(fig)
 
 
-def chart_category_detail(summary_scores: dict) -> io.BytesIO | None:
-    """카테고리별 세부 항목 점수 가로 막대 차트 (그룹별 구분)."""
-    label_map = {
-        "learning_objective_intro": "학습 목표 안내",
-        "previous_lesson_linkage": "전날 복습 연계",
-        "explanation_sequence": "설명 순서",
-        "key_point_emphasis": "핵심 강조",
-        "closing_summary": "마무리 요약",
-        "concept_definition": "개념 정의",
-        "analogy_example_usage": "비유·예시 활용",
-        "prerequisite_check": "선행 개념 확인",
-        "example_appropriateness": "예시 적절성",
-        "practice_transition": "실습 연계",
-        "error_handling": "오류 대응",
-        "participation_induction": "참여 유도",
-        "question_response_sufficiency": "질문 응답 충분성",
-    }
-    cat_display = {
-        "lecture_structure": "강의 구조",
-        "concept_clarity": "개념 명확성",
-        "practice_linkage": "실습 연계",
-        "interaction": "상호작용",
-    }
-
-    groups: list[tuple[str, list[tuple[str, float, str]]]] = []
-    for cat_key, cat_name in cat_display.items():
-        color = CAT_COLORS.get(cat_key, CH_PRIMARY)
-        items = []
-        for item_key, score in summary_scores.get(cat_key, {}).items():
-            items.append((label_map.get(item_key, item_key), to_number(score, 0.0), color))
-        if items:
-            groups.append((cat_name, items))
-
-    if not groups:
+def chart_subitem_scores(summary_scores: dict[str, dict[str, float]]) -> io.BytesIO | None:
+    rows = flatten_scores(summary_scores)
+    if not rows:
         return None
 
-    # 각 그룹 사이에 빈 줄 삽입
-    all_labels = []
-    all_values = []
-    all_colors = []
-    group_label_positions = []
+    labels = [f"{row['category']} · {row['item']}" for row in rows]
+    scores = [row["score"] for row in rows]
+    colors_map = [score_color_hex(v) for v in scores]
 
-    y_pos = 0
-    for g_name, items in reversed(groups):
-        start_y = y_pos
-        for label, score, color in reversed(items):
-            all_labels.append(label)
-            all_values.append(score)
-            all_colors.append(color)
-            y_pos += 1
-        group_label_positions.append((g_name, (start_y + y_pos - 1) / 2, items[0][2]))
-        y_pos += 0.6  # 그룹 간 간격
+    fig_h = max(4.8, min(10.2, len(rows) * 0.45 + 1.8))
+    fig, ax = plt.subplots(figsize=(8.6, fig_h))
+    ax.set_facecolor(CHART_BG)
 
-    n = len(all_labels)
-    y_positions = []
-    idx = 0
-    y_cur = 0
-    group_idx = 0
-    items_in_group = 0
-    group_sizes = [len(g[1]) for g in reversed(groups)]
+    y = np.arange(len(labels))
+    bars = ax.barh(y, scores, color=colors_map, alpha=0.85, edgecolor="white", linewidth=0.6)
+    ax.invert_yaxis()
 
-    for i in range(n):
-        y_positions.append(y_cur)
-        y_cur += 1
-        items_in_group += 1
-        if group_idx < len(group_sizes) and items_in_group >= group_sizes[group_idx]:
-            y_cur += 0.6
-            items_in_group = 0
-            group_idx += 1
-
-    fig_h = max(4.0, y_cur * 0.42 + 1.0)
-    fig, ax = plt.subplots(figsize=(7.0, fig_h))
-    fig.patch.set_facecolor("white")
-    ax.set_facecolor("white")
-
-    # 배경 줄무늬
-    for i, yp in enumerate(y_positions):
-        if i % 2 == 0:
-            ax.axhspan(yp - 0.35, yp + 0.35, color="#F8F9FC", zorder=0)
-
-    bars = ax.barh(y_positions, all_values, color=all_colors, height=0.5,
-                   edgecolor="white", linewidth=0.5, alpha=0.85, zorder=3)
-
-    ax.set_yticks(y_positions)
-    ax.set_yticklabels(all_labels, fontsize=9, color="#1A1A2E")
-
-    # 기준선
-    ax.axvline(x=3.0, color="#A0AAB8", linestyle="--", linewidth=1.2, alpha=0.6, zorder=2)
-
-    for bar, val in zip(bars, all_values):
-        txt_color = score_hex(val)
-        ax.text(
-            val + 0.08, bar.get_y() + bar.get_height() / 2,
-            f"{val:.1f}", va="center", ha="left", fontsize=9,
-            color=txt_color, fontweight="bold", zorder=4,
-        )
-
-    ax.set_xlim(0, 5.5)
-    ax.set_xlabel("점수 (5점 만점)", fontsize=8, color="#5A6678")
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=8.3)
+    ax.set_xlim(0, 5.4)
     ax.set_xticks([0, 1, 2, 3, 4, 5])
-    ax.tick_params(axis="x", labelsize=7, colors="#8A95A8")
-    ax.tick_params(axis="y", length=0)
-    for spine in ["top", "right", "left"]:
+    ax.axvline(3.0, color=CHART_REF, linestyle="--", linewidth=1.1)
+
+    for bar, score in zip(bars, scores):
+        ax.text(
+            min(score + 0.07, 5.25),
+            bar.get_y() + bar.get_height() / 2,
+            f"{score:.1f}",
+            va="center",
+            fontsize=8.3,
+            color=score_color_hex(score),
+            fontweight="bold",
+        )
+
+    ax.tick_params(axis="x", labelsize=8, colors=CHART_TEXT)
+    ax.tick_params(axis="y", labelsize=8.2, colors=CHART_TEXT)
+    for spine in ["top", "right"]:
         ax.spines[spine].set_visible(False)
-    ax.spines["bottom"].set_color(CH_GRID)
+    ax.spines["left"].set_color(CHART_GRID)
+    ax.spines["bottom"].set_color(CHART_GRID)
 
-    # 범례
-    legend_patches = [
-        mpatches.Patch(color=CAT_COLORS[k], label=v, alpha=0.85)
-        for k, v in cat_display.items()
-    ]
-    ax.legend(handles=legend_patches, loc="lower right", fontsize=8,
-              framealpha=0.95, edgecolor=CH_GRID, fancybox=True)
+    fig.tight_layout()
+    return fig_to_buffer(fig)
 
-    plt.tight_layout()
-    buf = io.BytesIO()
-    plt.savefig(buf, format="png", dpi=180, bbox_inches="tight", facecolor="white")
-    plt.close(fig)
-    buf.seek(0)
-    return buf
+def build_cover(data: dict[str, Any], analysis: dict[str, Any], styles: dict[str, ParagraphStyle], width: float) -> list:
+    story: list = []
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# PDF 페이지 콜백
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def _make_page_callback(reg_font: str):
-    def on_first_page(canvas, doc):
-        # 커버 페이지에는 푸터 없음
-        pass
-
-    def on_later_pages(canvas, doc):
-        canvas.saveState()
-        # 상단 얇은 네이비 라인
-        canvas.setStrokeColor(colors.HexColor("#1B3A5C"))
-        canvas.setLineWidth(1.5)
-        canvas.line(2 * cm, PAGE_H - 1.5 * cm, PAGE_W - 2 * cm, PAGE_H - 1.5 * cm)
-        # 하단 푸터
-        canvas.setFont(reg_font, 7.5)
-        canvas.setFillColor(colors.HexColor("#8A95A8"))
-        canvas.drawString(2 * cm, 1.2 * cm, "EduInsight AI  ·  강의 분석 리포트")
-        canvas.drawRightString(PAGE_W - 2 * cm, 1.2 * cm, f"{doc.page}")
-        canvas.setStrokeColor(colors.HexColor("#D0D5DD"))
-        canvas.setLineWidth(0.5)
-        canvas.line(2 * cm, 1.5 * cm, PAGE_W - 2 * cm, 1.5 * cm)
-        canvas.restoreState()
-
-    return on_first_page, on_later_pages
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 공통 위젯
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def _section_header(title: str, description: str, s: dict) -> list:
-    """섹션 제목 + 설명 + 구분선."""
-    elements = [
-        Paragraph(title, s["section_title"]),
-        HRFlowable(width="100%", thickness=2, color=C_ACCENT, spaceAfter=4),
-    ]
-    if description:
-        elements.append(Paragraph(description, s["section_desc"]))
-    return elements
-
-
-def _metric_card(label: str, value: str, unit: str, accent_color: colors.Color,
-                 s: dict, bold: str) -> Table:
-    """지표 카드 (라벨, 값, 단위)."""
-    data = [
-        [Paragraph(label, s["badge_label"])],
-        [Paragraph(value, ParagraphStyle(
-            f"MV_{label}", fontName=bold, fontSize=22, textColor=accent_color,
-            alignment=TA_CENTER, leading=28,
-        ))],
-        [Paragraph(unit, s["badge_unit"])],
-    ]
-    t = Table(data, colWidths=[3.8 * cm])
-    t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), C_LIGHT_BG),
-        ("ROUNDEDCORNERS", [4, 4, 4, 4]),
-        ("TOPPADDING", (0, 0), (0, 0), 10),
-        ("TOPPADDING", (0, 1), (0, 1), 4),
-        ("TOPPADDING", (0, 2), (0, 2), 2),
-        ("BOTTOMPADDING", (0, 2), (0, 2), 10),
-        ("BOTTOMPADDING", (0, 0), (0, 0), 2),
-        ("BOTTOMPADDING", (0, 1), (0, 1), 2),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("BOX", (0, 0), (-1, -1), 0.5, C_BORDER),
-    ]))
-    return t
-
-
-def _score_pill(score: float, bold: str) -> Paragraph:
-    """점수에 따라 색상 변하는 pill 텍스트."""
-    hex_c = score_hex(score)
-    return Paragraph(
-        f"{score:.1f}",
-        ParagraphStyle(f"Pill_{score}", fontName=bold, fontSize=11,
-                       textColor=colors.HexColor(hex_c), alignment=TA_CENTER),
-    )
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 페이지 1: 커버
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def build_cover(data: dict, s: dict, reg: str, bold: str) -> list:
-    story = []
     meta = data.get("metadata", {})
-    sessions = meta.get("sessions", [])
-    subjects = list(dict.fromkeys(ss.get("subject", "") for ss in sessions))
-    analysis = data.get("analysis", {})
-    ss_scores = analysis.get("summary_scores", {})
+    sessions = meta.get("sessions", []) if isinstance(meta.get("sessions", []), list) else []
+    language = analysis.get("language_quality", {})
+    interaction_metrics = analysis.get("interaction_metrics", {})
+    summary_scores = analysis.get("summary_scores", {})
 
-    # ── 상단 여백 ──
-    story.append(Spacer(1, 1.5 * cm))
+    cat_avgs = category_averages(summary_scores)
+    overall = overall_score(cat_avgs)
 
-    # ── 네이비 헤더 블록 ──
-    header_data = [
-        [Paragraph("강의 분석 리포트", s["cover_title"])],
-        [Paragraph("EduInsight AI", s["cover_sub"])],
-    ]
-    header_table = Table(header_data, colWidths=[CONTENT_W])
-    header_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), C_PRIMARY),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (0, 0), 36),
-        ("BOTTOMPADDING", (0, 0), (0, 0), 6),
-        ("BOTTOMPADDING", (0, 1), (0, 1), 32),
-        ("LEFTPADDING", (0, 0), (-1, -1), 20),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 20),
-        ("ROUNDEDCORNERS", [6, 6, 6, 6]),
-    ]))
-    story.append(header_table)
-    story.append(Spacer(1, 0.8 * cm))
-
-    # ── 강의 정보 테이블 ──
-    def info_row(key, val):
-        return [
-            Paragraph(key, ParagraphStyle(
-                f"IK_{key}", fontName=bold, fontSize=9,
-                textColor=C_PRIMARY, alignment=TA_CENTER, leading=14)),
-            Paragraph(val or "-", ParagraphStyle(
-                f"IV_{key}", fontName=reg, fontSize=9.5,
-                textColor=C_TEXT, leading=14)),
-        ]
-
-    info_rows = [
-        info_row("과정명", meta.get("course_name", "")),
-        info_row("강의 일자", meta.get("date", "")),
-        info_row("담당 강사", meta.get("instructor", "")),
-        info_row("보조 강사", meta.get("sub_instructor", "")),
-        info_row("강의 주제", " / ".join(filter(None, subjects))),
-        info_row("강의 ID", data.get("lecture_id", "")),
-    ]
-    key_col_w = 3.2 * cm
-    val_col_w = CONTENT_W - key_col_w
-    info_table = Table(info_rows, colWidths=[key_col_w, val_col_w])
-    info_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (0, -1), C_LIGHT_BG),
-        ("FONTNAME", (0, 0), (-1, -1), reg),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("LEFTPADDING", (0, 0), (-1, -1), 10),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-        ("BOX", (0, 0), (-1, -1), 0.5, C_BORDER),
-        ("LINEBELOW", (0, 0), (-1, -2), 0.3, C_BORDER),
-        ("ROUNDEDCORNERS", [4, 4, 4, 4]),
-    ]))
-    story.append(info_table)
-    story.append(Spacer(1, 0.6 * cm))
-
-    # ── 세션 테이블 ──
-    if sessions:
-        sess_header = [
-            Paragraph("세션", s["th"]),
-            Paragraph("시간", s["th"]),
-            Paragraph("과목", s["th"]),
-            Paragraph("강의 내용", s["th"]),
-        ]
-        session_rows = [sess_header]
-        for i, ss in enumerate(sessions):
-            session_rows.append([
-                Paragraph(str(i + 1), s["td_center"]),
-                Paragraph(ss.get("time", ""), s["td_center"]),
-                Paragraph(ss.get("subject", ""), s["td"]),
-                Paragraph(ss.get("content", ""), s["td"]),
-            ])
-        col_ws = [1.5 * cm, 3.2 * cm, 4.2 * cm, CONTENT_W - 1.5 * cm - 3.2 * cm - 4.2 * cm]
-        sess_table = Table(session_rows, colWidths=col_ws)
-        sess_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), C_PRIMARY),
-            ("FONTNAME", (0, 0), (-1, -1), reg),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 8),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-            ("LEFTPADDING", (0, 0), (-1, -1), 8),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-            ("BOX", (0, 0), (-1, -1), 0.5, C_BORDER),
-            ("LINEBELOW", (0, 0), (-1, -2), 0.3, C_BORDER),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [C_WHITE, C_LIGHT_BG]),
-            ("ROUNDEDCORNERS", [4, 4, 4, 4]),
-        ]))
-        story.append(sess_table)
-        story.append(Spacer(1, 0.6 * cm))
-
-    # ── 종합 점수 미리보기 (커버 하단) ──
-    cat_map = {
-        "lecture_structure": "강의 구조",
-        "concept_clarity": "개념 명확성",
-        "practice_linkage": "실습 연계",
-        "interaction": "상호작용",
-    }
-    if ss_scores:
-        avgs = {k: cat_avg(ss_scores.get(k, {})) for k in cat_map}
-        overall = round(sum(avgs.values()) / len(avgs), 2) if avgs else 0.0
-
-        # 종합 점수 배너
-        sc = score_color(overall)
-        overall_data = [[
-            Paragraph("종합 점수", ParagraphStyle(
-                "OL", fontName=reg, fontSize=9, textColor=C_TEXT_SECONDARY,
-                alignment=TA_CENTER)),
-            Paragraph(f"{overall:.2f}", ParagraphStyle(
-                "OV", fontName=bold, fontSize=30, textColor=sc,
-                alignment=TA_CENTER, leading=36)),
-            Paragraph(f"/ 5.00  ·  {score_label(overall)}", ParagraphStyle(
-                "OD", fontName=bold, fontSize=11, textColor=sc,
-                alignment=TA_CENTER)),
-        ]]
-        overall_banner = Table(overall_data, colWidths=[3 * cm, 4.5 * cm, 5 * cm],
-                               hAlign="CENTER")
-        overall_banner.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), score_bg(overall)),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-            ("TOPPADDING", (0, 0), (-1, -1), 12),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
-            ("BOX", (0, 0), (-1, -1), 0.5, sc),
-            ("ROUNDEDCORNERS", [6, 6, 6, 6]),
-        ]))
-        story.append(overall_banner)
-        story.append(Spacer(1, 0.3 * cm))
-
-        # 카테고리 미니 점수
-        cat_cells = []
-        for key, name in cat_map.items():
-            avg = avgs[key]
-            cell = Table(
-                [[Paragraph(name, ParagraphStyle(
-                    f"CM_{key}", fontName=reg, fontSize=8,
-                    textColor=C_TEXT_SECONDARY, alignment=TA_CENTER))],
-                 [Paragraph(f"{avg:.2f}", ParagraphStyle(
-                    f"CS_{key}", fontName=bold, fontSize=14,
-                    textColor=colors.HexColor(score_hex(avg)), alignment=TA_CENTER))]],
-                colWidths=[3.5 * cm],
-            )
-            cell.setStyle(TableStyle([
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ]))
-            cat_cells.append(cell)
-
-        cat_row = Table([cat_cells], colWidths=[3.8 * cm] * 4, hAlign="CENTER")
-        cat_row.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 2),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-        ]))
-        story.append(cat_row)
-
-    story.append(PageBreak())
-    return story
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 페이지 2: 언어 표현 품질 분석
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def build_language_quality(analysis: dict, s: dict, reg: str, bold: str) -> list:
-    story = []
-    lq = analysis.get("language_quality", {})
-    ccm = analysis.get("concept_clarity_metrics", {})
-    im = analysis.get("interaction_metrics", {})
-
-    story.extend(_section_header(
-        "1. 언어 표현 품질 분석",
-        "강의 중 사용된 언어의 품질을 반복 표현, 문장 완결성, 발화 속도 등의 지표로 분석합니다.",
-        s,
-    ))
-
-    # ── 지표 카드 ──
-    repeat_ratio = to_number(lq.get("repeat_ratio", 0), 0.0)
-    incomplete_ratio = to_number(lq.get("incomplete_sentence_ratio", 0), 0.0)
-    speech_rate = int(round(to_number(ccm.get("speech_rate_wpm", 0), 0.0)))
-    q_count = int(round(to_number(im.get("understanding_question_count", 0), 0.0)))
-
-    # 각 지표에 적절한 색상 지정
-    repeat_color = C_DANGER if repeat_ratio > 0.15 else (C_WARNING if repeat_ratio > 0.1 else C_SUCCESS)
-    complete_color = C_SUCCESS if (1 - incomplete_ratio) >= 0.9 else (C_WARNING if (1 - incomplete_ratio) >= 0.8 else C_DANGER)
-    speed_color = C_WARNING if speech_rate > 180 else (C_SUCCESS if speech_rate >= 120 else C_DANGER)
-    q_color = C_SUCCESS if q_count >= 15 else (C_WARNING if q_count >= 8 else C_DANGER)
-
-    cards = [
-        _metric_card("반복 표현 비율", f"{repeat_ratio * 100:.1f}%", "발화 전체 대비", repeat_color, s, bold),
-        _metric_card("문장 완결성", f"{(1 - incomplete_ratio) * 100:.1f}%", "완결 문장 비율", complete_color, s, bold),
-        _metric_card("발화 속도", f"{speech_rate}", "단어/분 (wpm)", speed_color, s, bold),
-        _metric_card("이해 확인 질문", f"{q_count}회", "총 질문 수", q_color, s, bold),
-    ]
-    card_row = Table([cards], colWidths=[4.05 * cm] * 4, hAlign="CENTER")
-    card_row.setStyle(TableStyle([
-        ("LEFTPADDING", (0, 0), (-1, -1), 3),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-    ]))
-    story.append(card_row)
-    story.append(Spacer(1, 0.6 * cm))
-
-    # ── 반복 표현 차트 + 발화 스타일 도넛 ──
-    repeat_expr = lq.get("repeat_expressions", {})
-    speech_style = lq.get("speech_style_ratio", {})
-
-    repeat_buf = chart_repeat_expressions(repeat_expr)
-    style_buf = chart_speech_style(speech_style)
-
-    if repeat_buf or style_buf:
-        story.append(Paragraph("반복 표현 분포 및 발화 스타일", s["subsection"]))
-        story.append(Spacer(1, 2 * mm))
-
-    if repeat_buf and style_buf:
-        # figsize=(5.5, h) → 비율 유지
-        repeat_items = sorted(repeat_expr.items(), key=lambda x: x[1], reverse=True)[:8]
-        n_bars = len(repeat_items)
-        fig_h_inch = max(2.5, n_bars * 0.45 + 0.8)
-        ratio = fig_h_inch / 5.5
-        img_w_repeat = 10.0 * cm
-        img_h_repeat = img_w_repeat * ratio
-
-        img_repeat = Image(repeat_buf, width=img_w_repeat, height=img_h_repeat)
-        img_style = Image(style_buf, width=5.0 * cm, height=5.0 * cm)
-
-        spacer_w = 0.5 * cm
-        row = Table(
-            [[img_repeat, Spacer(spacer_w, 1), img_style]],
-            colWidths=[img_w_repeat, spacer_w, 5.5 * cm],
-        )
-        row.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-        ]))
-        story.append(row)
-    elif repeat_buf:
-        story.append(Image(repeat_buf, width=14 * cm, height=7 * cm))
-    elif style_buf:
-        story.append(Image(style_buf, width=5 * cm, height=5 * cm))
-
-    # ── 해석 요약 카드 ──
-    story.append(Spacer(1, 0.5 * cm))
-    interp_lines = []
-    if repeat_ratio > 0.15:
-        top_expr = sorted(repeat_expr.items(), key=lambda x: x[1], reverse=True)[:2]
-        top_str = ", ".join(f"'{w}'({c}회)" for w, c in top_expr)
-        interp_lines.append(
-            f"반복 표현 비율이 <b>{repeat_ratio*100:.1f}%</b>로 높은 편입니다. "
-            f"특히 {top_str} 등의 필러 표현이 빈번하게 사용되고 있어 청취 집중도에 영향을 줄 수 있습니다."
-        )
-    elif repeat_ratio > 0.1:
-        interp_lines.append(
-            f"반복 표현 비율이 <b>{repeat_ratio*100:.1f}%</b>로 보통 수준입니다."
-        )
-    else:
-        interp_lines.append(
-            f"반복 표현 비율이 <b>{repeat_ratio*100:.1f}%</b>로 양호합니다."
-        )
-
-    if (1 - incomplete_ratio) >= 0.9:
-        interp_lines.append(
-            f"문장 완결성은 <b>{(1 - incomplete_ratio)*100:.1f}%</b>로 우수하며, "
-            "대부분의 발화가 완전한 문장 형태로 전달되고 있습니다."
-        )
-    else:
-        interp_lines.append(
-            f"문장 완결성이 <b>{(1 - incomplete_ratio)*100:.1f}%</b>로 개선이 필요합니다."
-        )
-
-    if speech_rate > 180:
-        interp_lines.append(
-            f"발화 속도가 <b>{speech_rate} wpm</b>으로 다소 빠른 편입니다. "
-            "핵심 개념 설명 시 속도 조절이 도움이 될 수 있습니다."
-        )
-    elif speech_rate >= 120:
-        interp_lines.append(
-            f"발화 속도는 <b>{speech_rate} wpm</b>으로 적절한 범위입니다."
-        )
-
-    formal_pct = speech_style.get("formal", 0) * 100
-    if formal_pct >= 85:
-        interp_lines.append(
-            f"격식체 비율이 <b>{formal_pct:.0f}%</b>로 높아 "
-            "전문적이고 일관된 강의 어투를 유지하고 있습니다."
-        )
-
-    if interp_lines:
-        interp_header = Paragraph("분석 해석", s["subsection"])
-        interp_body_parts = []
-        for line in interp_lines:
-            interp_body_parts.append(
-                Paragraph(f"·  {line}", s["body"])
-            )
-        story.append(interp_header)
-        story.append(Spacer(1, 2 * mm))
-        # 해석 카드
-        interp_card_data = [[[p] for p in interp_body_parts]]
-        flat_rows = [[p] for p in interp_body_parts]
-        interp_table = Table(flat_rows, colWidths=[CONTENT_W - 1.2 * cm])
-        interp_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), C_LIGHT_BG),
-            ("LEFTPADDING", (0, 0), (-1, -1), 14),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 14),
-            ("TOPPADDING", (0, 0), (0, 0), 10),
-            ("TOPPADDING", (0, 1), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, -1), (0, -1), 10),
-            ("BOTTOMPADDING", (0, 0), (-1, -2), 4),
-            ("BOX", (0, 0), (-1, -1), 0.5, C_BORDER),
-            ("ROUNDEDCORNERS", [4, 4, 4, 4]),
-        ]))
-        story.append(interp_table)
-
-    story.append(PageBreak())
-    return story
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 페이지 3: 강의 품질 종합 평가
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def build_scores(analysis: dict, s: dict, reg: str, bold: str) -> list:
-    story = []
-    ss = analysis.get("summary_scores", {})
-    if not ss:
-        return story
-
-    story.extend(_section_header(
-        "2. 강의 품질 종합 평가",
-        "4개 카테고리(강의 구조, 개념 명확성, 실습 연계, 상호작용)에 대한 정량적 평가입니다.",
-        s,
-    ))
-
-    cat_map = {
-        "lecture_structure": "강의 구조",
-        "concept_clarity": "개념 명확성",
-        "practice_linkage": "실습 연계",
-        "interaction": "상호작용",
-    }
-    avgs = {k: cat_avg(ss.get(k, {})) for k in cat_map}
-    overall = round(sum(avgs.values()) / len(avgs), 2) if avgs else 0.0
-
-    # ── 레이더 차트 + 카테고리 점수 테이블 ──
-    radar_buf = chart_radar(ss)
-    # figsize=(5,5) → 1:1 비율
-    radar_w = 7 * cm
-    radar_img = Image(radar_buf, width=radar_w, height=radar_w)
-
-    # 카테고리 테이블
-    cat_rows = [[
-        Paragraph("카테고리", s["th"]),
-        Paragraph("평균", s["th"]),
-        Paragraph("평가", s["th"]),
-    ]]
-    for key, name in cat_map.items():
-        avg = avgs.get(key, 0)
-        cat_rows.append([
-            Paragraph(name, ParagraphStyle(
-                f"CN_{key}", fontName=reg, fontSize=9.5, textColor=C_TEXT, leading=14)),
-            Paragraph(f"{avg:.2f}", ParagraphStyle(
-                f"CV_{key}", fontName=bold, fontSize=11,
-                textColor=colors.HexColor(score_hex(avg)), alignment=TA_CENTER)),
-            Paragraph(score_label(avg), ParagraphStyle(
-                f"CL_{key}", fontName=bold, fontSize=9,
-                textColor=colors.HexColor(score_hex(avg)), alignment=TA_CENTER)),
-        ])
-
-    t_w = CONTENT_W - radar_w - 1.0 * cm
-    cat_table = Table(cat_rows, colWidths=[t_w * 0.45, t_w * 0.28, t_w * 0.27])
-    cat_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), C_PRIMARY),
-        ("FONTNAME", (0, 0), (-1, -1), reg),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-        ("LEFTPADDING", (0, 0), (-1, -1), 8),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-        ("BOX", (0, 0), (-1, -1), 0.5, C_BORDER),
-        ("LINEBELOW", (0, 0), (-1, -2), 0.3, C_BORDER),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [C_WHITE, C_LIGHT_BG]),
-        ("ROUNDEDCORNERS", [4, 4, 4, 4]),
-    ]))
-
-    dual = Table(
-        [[radar_img, Spacer(0.3 * cm, 1), cat_table]],
-        colWidths=[radar_w, 0.5 * cm, t_w],
-    )
-    dual.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-    ]))
-    story.append(dual)
-    story.append(Spacer(1, 0.4 * cm))
-
-    # ── 카테고리별 해석 카드 ──
-    cat_interp_lines = []
-    for key, name in cat_map.items():
-        avg = avgs[key]
-        label = score_label(avg)
-        raw_items = ss.get(key, {})
-        items = {k: to_number(v, 0.0) for k, v in raw_items.items()}
-        if not items:
-            continue
-        best_item = max(items, key=items.get)
-        worst_item = min(items, key=items.get)
-        label_map_local = {
-            "learning_objective_intro": "학습 목표 안내",
-            "previous_lesson_linkage": "전날 복습 연계",
-            "explanation_sequence": "설명 순서",
-            "key_point_emphasis": "핵심 강조",
-            "closing_summary": "마무리 요약",
-            "concept_definition": "개념 정의",
-            "analogy_example_usage": "비유·예시 활용",
-            "prerequisite_check": "선행 개념 확인",
-            "example_appropriateness": "예시 적절성",
-            "practice_transition": "실습 연계",
-            "error_handling": "오류 대응",
-            "participation_induction": "참여 유도",
-            "question_response_sufficiency": "질문 응답 충분성",
-        }
-        best_name = label_map_local.get(best_item, best_item)
-        worst_name = label_map_local.get(worst_item, worst_item)
-        hex_c = score_hex(avg)
-        cat_interp_lines.append(
-            f'<font color="{hex_c}"><b>{name}</b></font> ({avg:.2f}, {label}): '
-            f'<b>{best_name}</b>({items[best_item]:.1f})이 가장 높고, '
-            f'<b>{worst_name}</b>({items[worst_item]:.1f})이 가장 낮습니다.'
-        )
-
-    if cat_interp_lines:
-        story.append(Paragraph("카테고리별 요약", s["subsection"]))
-        story.append(Spacer(1, 2 * mm))
-        interp_rows = [[Paragraph(f"·  {line}", s["body"])] for line in cat_interp_lines]
-        interp_tbl = Table(interp_rows, colWidths=[CONTENT_W - 1.0 * cm])
-        interp_tbl.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), C_LIGHT_BG),
-            ("LEFTPADDING", (0, 0), (-1, -1), 14),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 14),
-            ("TOPPADDING", (0, 0), (0, 0), 10),
-            ("TOPPADDING", (0, 1), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, -1), (0, -1), 10),
-            ("BOTTOMPADDING", (0, 0), (-1, -2), 4),
-            ("BOX", (0, 0), (-1, -1), 0.5, C_BORDER),
-            ("ROUNDEDCORNERS", [4, 4, 4, 4]),
-        ]))
-        story.append(interp_tbl)
-    story.append(Spacer(1, 0.3 * cm))
-
-    # ── 세부 항목 점수 차트 ──
-    detail_buf = chart_category_detail(ss)
-    if detail_buf:
-        n_items = sum(len(v) for v in ss.values() if isinstance(v, dict))
-        # figsize=(7.0, fig_h) → 비율 유지
-        fig_h_inch = max(4.0, (n_items + 2) * 0.42 + 1.0)
-        ratio = fig_h_inch / 7.0
-        img_w = 15 * cm
-        img_h = img_w * ratio
-        # KeepTogether: 제목과 차트가 같은 페이지에 표시되도록
-        story.append(KeepTogether([
-            Paragraph("카테고리별 세부 항목 점수", s["subsection"]),
-            Spacer(1, 2 * mm),
-            Image(detail_buf, width=img_w, height=img_h),
-        ]))
-
-    story.append(PageBreak())
-    return story
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 페이지 4: 강의 개선 인사이트
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-def build_insights(analysis: dict, s: dict, reg: str, bold: str) -> list:
-    story = []
-    strengths = analysis.get("overall_strengths", [])
-    issues = analysis.get("overall_issues", [])
-    evidences = analysis.get("overall_evidences", [])
-
-    story.extend(_section_header(
-        "3. 강의 개선 인사이트",
-        "분석 결과를 바탕으로 도출된 강의의 강점과 개선이 필요한 영역을 정리합니다.",
-        s,
-    ))
-
-    # ── 강점 섹션 ──
-    strength_header = Table(
-        [[Paragraph("강점", s["insight_title"])]],
-        colWidths=[CONTENT_W],
-    )
-    strength_header.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), C_SUCCESS),
-        ("TOPPADDING", (0, 0), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-        ("LEFTPADDING", (0, 0), (-1, -1), 14),
-        ("ROUNDEDCORNERS", [6, 6, 0, 0]),
-    ]))
-    story.append(strength_header)
-
-    if strengths:
-        strength_rows = []
-        for i, text in enumerate(strengths):
-            bg = C_WHITE if i % 2 == 0 else C_SUCCESS_BG
-            strength_rows.append([
-                Paragraph(f"<b>{i+1}.</b>", ParagraphStyle(
-                    f"SN_{i}", fontName=bold, fontSize=9.5, textColor=C_SUCCESS,
-                    alignment=TA_CENTER, leading=15)),
-                Paragraph(text, s["insight_item"]),
-            ])
-        strength_table = Table(strength_rows, colWidths=[1.2 * cm, CONTENT_W - 1.2 * cm])
-        strength_table.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("TOPPADDING", (0, 0), (-1, -1), 8),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-            ("LEFTPADDING", (0, 0), (0, -1), 6),
-            ("LEFTPADDING", (1, 0), (1, -1), 4),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#A8D5BA")),
-            ("LINEBELOW", (0, 0), (-1, -2), 0.3, colors.HexColor("#D4EDDA")),
-            *[("BACKGROUND", (0, i), (-1, i), C_WHITE if i % 2 == 0 else C_SUCCESS_BG)
-              for i in range(len(strength_rows))],
-            ("ROUNDEDCORNERS", [0, 0, 6, 6]),
-        ]))
-        story.append(strength_table)
-    else:
-        story.append(Paragraph("분석된 강점이 없습니다.", s["small"]))
-
-    story.append(Spacer(1, 0.6 * cm))
-
-    # ── 개선 필요 사항 섹션 ──
-    issue_header = Table(
-        [[Paragraph("개선 필요 사항", s["insight_title"])]],
-        colWidths=[CONTENT_W],
-    )
-    issue_header.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), C_DANGER),
-        ("TOPPADDING", (0, 0), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-        ("LEFTPADDING", (0, 0), (-1, -1), 14),
-        ("ROUNDEDCORNERS", [6, 6, 0, 0]),
-    ]))
-    story.append(issue_header)
-
-    if issues:
-        issue_rows = []
-        for i, text in enumerate(issues):
-            bg = C_WHITE if i % 2 == 0 else C_DANGER_BG
-            ev = evidences[i] if i < len(evidences) else None
-
-            content_parts = [Paragraph(text, s["insight_item"])]
-            if ev:
-                content_parts.append(Spacer(1, 2 * mm))
-                content_parts.append(
-                    Paragraph(
-                        f'<font color="#8A95A8">근거:</font>  {ev}',
-                        s["insight_evidence"],
-                    )
+    hero = Table(
+        [
+            [Paragraph("EduInsight AI 강의 분석 리포트", styles["cover_title"])],
+            [Paragraph(esc(meta.get("course_name", "강의 정보 없음")), styles["cover_sub"])],
+            [
+                Paragraph(
+                    esc(f"{as_text(meta.get('date'))} | 강사: {as_text(meta.get('instructor'))}"),
+                    styles["cover_sub"],
                 )
+            ],
+        ],
+        colWidths=[width],
+    )
+    hero.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), C_PRIMARY_DARK),
+                ("TOPPADDING", (0, 0), (-1, 0), 22),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
+                ("TOPPADDING", (0, 1), (-1, 2), 0),
+                ("BOTTOMPADDING", (0, 1), (-1, 2), 10),
+                ("LEFTPADDING", (0, 0), (-1, -1), 16),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 16),
+            ]
+        )
+    )
+    story.append(hero)
+    story.append(Spacer(1, 0.45 * cm))
 
-            # 내용을 하나의 셀로 묶기 (패딩 감안하여 폭 축소)
-            inner = Table(
-                [[p] for p in content_parts],
-                colWidths=[CONTENT_W - 1.2 * cm - 20],
-            )
-            inner.setStyle(TableStyle([
+    repeat_ratio = as_float(language.get("repeat_ratio", 0.0))
+    complete_ratio = max(0.0, 1.0 - as_float(language.get("incomplete_sentence_ratio", 0.0)))
+    q_count = int(as_float(interaction_metrics.get("understanding_question_count", 0)))
+
+    card_width = (width - 1.2 * cm) / 4
+    cards = [
+        metric_card("종합 점수", f"{overall:.2f}", "5점 만점", styles, card_width, C_SURFACE),
+        metric_card("반복 표현", pct(repeat_ratio), "전체 발화 대비", styles, card_width, C_SURFACE),
+        metric_card("문장 완결률", pct(complete_ratio), "완결 문장 비율", styles, card_width, C_SURFACE),
+        metric_card("이해 확인 질문", f"{q_count}회", "수업 중 질문 수", styles, card_width, C_SURFACE),
+    ]
+    cards_table = Table([cards], colWidths=[card_width] * 4)
+    cards_table.setStyle(
+        TableStyle(
+            [
                 ("LEFTPADDING", (0, 0), (-1, -1), 0),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 0),
                 ("TOPPADDING", (0, 0), (-1, -1), 0),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-            ]))
+            ]
+        )
+    )
+    story.append(cards_table)
+    story.append(Spacer(1, 0.45 * cm))
 
-            issue_rows.append([
-                Paragraph(f"<b>{i+1}.</b>", ParagraphStyle(
-                    f"IN_{i}", fontName=bold, fontSize=9.5, textColor=C_DANGER,
-                    alignment=TA_CENTER, leading=15)),
-                inner,
-            ])
+    info_rows = [
+        [Paragraph("강의명", styles["table_header"]), Paragraph(esc(meta.get("course_name")), styles["table_cell"])],
+        [Paragraph("강의일", styles["table_header"]), Paragraph(esc(meta.get("date")), styles["table_cell"])],
+        [Paragraph("주강사", styles["table_header"]), Paragraph(esc(meta.get("instructor")), styles["table_cell"])],
+        [Paragraph("보조강사", styles["table_header"]), Paragraph(esc(meta.get("sub_instructor")), styles["table_cell"])],
+        [Paragraph("강의 ID", styles["table_header"]), Paragraph(esc(data.get("lecture_id")), styles["table_cell"])],
+        [Paragraph("세션 수", styles["table_header"]), Paragraph(esc(str(len(sessions))), styles["table_cell"])],
+    ]
+    info_table = Table(info_rows, colWidths=[3.2 * cm, width - 3.2 * cm])
+    info_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, -1), C_PRIMARY),
+                ("ROWBACKGROUNDS", (1, 0), (1, -1), [colors.white, C_SURFACE]),
+                ("GRID", (0, 0), (-1, -1), 0.7, C_BORDER),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ]
+        )
+    )
+    story.append(info_table)
 
-        issue_table = Table(issue_rows, colWidths=[1.2 * cm, CONTENT_W - 1.2 * cm])
-        issue_table.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("TOPPADDING", (0, 0), (-1, -1), 8),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-            ("LEFTPADDING", (0, 0), (0, -1), 6),
-            ("LEFTPADDING", (1, 0), (1, -1), 4),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#F5C6CB")),
-            ("LINEBELOW", (0, 0), (-1, -2), 0.3, colors.HexColor("#F8D7DA")),
-            *[("BACKGROUND", (0, i), (-1, i), C_WHITE if i % 2 == 0 else C_DANGER_BG)
-              for i in range(len(issue_rows))],
-            ("ROUNDEDCORNERS", [0, 0, 6, 6]),
-        ]))
-        story.append(issue_table)
-    else:
-        story.append(Paragraph("분석된 개선 사항이 없습니다.", s["small"]))
-
-    # 남은 근거
-    extra_evidences = evidences[len(issues):]
-    if extra_evidences:
+    if sessions:
         story.append(Spacer(1, 0.4 * cm))
-        story.append(Paragraph("추가 근거", s["subsection"]))
-        for ev in extra_evidences:
-            story.append(Paragraph(f"·  {ev}", s["small"]))
+        story.append(Paragraph("세션 구성", styles["title"]))
+        story.append(Spacer(1, 0.12 * cm))
+
+        session_widths = [1.2 * cm, 2.8 * cm, 4.0 * cm, max(4.5 * cm, width - 8.0 * cm)]
+        session_rows = [
+            [
+                Paragraph("번호", styles["table_header"]),
+                Paragraph("시간", styles["table_header"]),
+                Paragraph("주제", styles["table_header"]),
+                Paragraph("내용", styles["table_header"]),
+            ]
+        ]
+        for idx, session in enumerate(sessions, start=1):
+            session_rows.append(
+                [
+                    Paragraph(str(idx), styles["table_center"]),
+                    Paragraph(esc(session.get("time")), styles["table_center"]),
+                    Paragraph(esc(session.get("subject")), styles["table_cell"]),
+                    Paragraph(esc(session.get("content")), styles["table_cell"]),
+                ]
+            )
+
+        session_table = Table(session_rows, colWidths=session_widths, repeatRows=1)
+        session_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), C_ACCENT),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, C_SURFACE]),
+                    ("GRID", (0, 0), (-1, -1), 0.7, C_BORDER),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ]
+            )
+        )
+        story.append(session_table)
+
+    story.append(PageBreak())
+    return story
+
+
+def build_language_section(analysis: dict[str, Any], styles: dict[str, ParagraphStyle], width: float) -> list:
+    story: list = []
+
+    language = analysis.get("language_quality", {})
+    concept = analysis.get("concept_clarity_metrics", {})
+    interaction = analysis.get("interaction_metrics", {})
+
+    story.append(section_header("1. 언어 표현 품질 분석", "반복 표현, 문장 완결성, 화법 비율을 기반으로 전달 품질을 진단합니다.", styles, width))
+    story.append(Spacer(1, 0.25 * cm))
+
+    repeat_ratio = as_float(language.get("repeat_ratio", 0.0))
+    complete_ratio = max(0.0, 1.0 - as_float(language.get("incomplete_sentence_ratio", 0.0)))
+    speech_rate = int(as_float(concept.get("speech_rate_wpm", 0.0)))
+    question_count = int(as_float(interaction.get("understanding_question_count", 0.0)))
+
+    card_width = (width - 0.9 * cm) / 3
+    quality_cards = [
+        metric_card("반복 표현 비율", pct(repeat_ratio), "낮을수록 전달 안정", styles, card_width),
+        metric_card("문장 완결률", pct(complete_ratio), "높을수록 명료함", styles, card_width),
+        metric_card("발화 속도", f"{speech_rate} 단어/분", "권장 범위: 140~180", styles, card_width),
+    ]
+    card_table = Table([quality_cards], colWidths=[card_width] * 3)
+    card_table.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+    story.append(card_table)
+    story.append(Spacer(1, 0.25 * cm))
+
+    story.append(
+        Paragraph(
+            esc(
+                f"이해 확인 질문은 총 {question_count}회로 집계되었습니다. "
+                f"반복 표현 비율은 {pct(repeat_ratio)}, 문장 완결률은 {pct(complete_ratio)}입니다."
+            ),
+            styles["body"],
+        )
+    )
+    story.append(Spacer(1, 0.18 * cm))
+    story.append(HRFlowable(width="100%", thickness=0.7, color=C_BORDER))
+    story.append(Spacer(1, 0.25 * cm))
+
+    repeat_chart = chart_repeat_expressions(language.get("repeat_expressions", {}))
+    style_chart = chart_speech_style(language.get("speech_style_ratio", {}))
+
+    chart_cells = []
+    if repeat_chart:
+        left_block = [Paragraph("상위 반복 표현", styles["title"]), Spacer(1, 0.08 * cm), fit_image(repeat_chart, width * 0.66, 9.2 * cm)]
+        chart_cells.append(left_block)
+    else:
+        chart_cells.append([Paragraph("반복 표현 데이터가 없습니다.", styles["small"])])
+
+    if style_chart:
+        right_block = [Paragraph("화법 비율", styles["title"]), Spacer(1, 0.08 * cm), fit_image(style_chart, width * 0.30, 5.6 * cm)]
+        chart_cells.append(right_block)
+    else:
+        chart_cells.append([Paragraph("화법 비율 데이터가 없습니다.", styles["small"])])
+
+    layout = Table([chart_cells], colWidths=[width * 0.68, width * 0.32])
+    layout.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    story.append(layout)
+
+    repeat_expr = language.get("repeat_expressions", {})
+    items = sorted(((as_text(k), int(v)) for k, v in repeat_expr.items()), key=lambda x: x[1], reverse=True)[:8]
+    if items:
+        story.append(Spacer(1, 0.25 * cm))
+        story.append(Paragraph("반복 표현 상세", styles["title"]))
+        total = max(1, sum(v for _, v in items))
+        rows = [[Paragraph("표현", styles["table_header"]), Paragraph("횟수", styles["table_header"]), Paragraph("비중", styles["table_header"])]]
+        for expr, count in items:
+            rows.append(
+                [
+                    Paragraph(esc(expr), styles["table_cell"]),
+                    Paragraph(f"{count}회", styles["table_center"]),
+                    Paragraph(pct(count / total), styles["table_center"]),
+                ]
+            )
+
+        tbl = Table(rows, colWidths=[width * 0.56, width * 0.20, width * 0.24], repeatRows=1)
+        tbl.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), C_ACCENT),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, C_SURFACE]),
+                    ("GRID", (0, 0), (-1, -1), 0.7, C_BORDER),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ]
+            )
+        )
+        story.append(tbl)
+
+    story.append(PageBreak())
+    return story
+
+def build_scores_section(analysis: dict[str, Any], styles: dict[str, ParagraphStyle], width: float) -> list:
+    story: list = []
+
+    summary_scores = analysis.get("summary_scores", {})
+    if not summary_scores:
+        return story
+
+    cat_avgs = category_averages(summary_scores)
+    overall = overall_score(cat_avgs)
+
+    story.append(
+        section_header(
+            "2. 종합 점수 분석",
+            "항목 점수와 종합 점수를 함께 확인합니다.",
+            styles,
+            width,
+        )
+    )
+    story.append(Spacer(1, 0.28 * cm))
+
+    top_cards = [
+        metric_card("종합 점수", f"{overall:.2f}", f"등급: {score_grade(overall)}", styles, (width - 0.6 * cm) / 2),
+        metric_card("항목 점수", f"{overall - 3.0:+.2f}", "기준점(3.00) 대비", styles, (width - 0.6 * cm) / 2, C_SURFACE_ALT),
+    ]
+    top_tbl = Table([top_cards], colWidths=[(width - 0.6 * cm) / 2, (width - 0.6 * cm) / 2])
+    top_tbl.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+    story.append(top_tbl)
+    story.append(Spacer(1, 0.25 * cm))
+
+    radar = chart_radar(cat_avgs)
+    cat_rows = [
+        [
+            Paragraph("항목", styles["table_header"]),
+            Paragraph("점수", styles["table_header"]),
+            Paragraph("내용", styles["table_header"]),
+        ]
+    ]
+    for key in CATEGORY_ORDER:
+        value = cat_avgs.get(key, 0.0)
+        cat_rows.append(
+            [
+                Paragraph(CATEGORY_LABELS.get(key, key), styles["table_cell"]),
+                Paragraph(
+                    f"{value:.2f}",
+                    ParagraphStyle(
+                        "tmp",
+                        parent=styles["table_center"],
+                        textColor=colors.HexColor(score_color_hex(value)),
+                        fontName=styles["table_center"].fontName,
+                    ),
+                ),
+                Paragraph(
+                    score_grade(value),
+                    ParagraphStyle("tmp2", parent=styles["table_center"], textColor=colors.HexColor(score_color_hex(value))),
+                ),
+            ]
+        )
+
+    def _styled_cat_table(total_width: float) -> Table:
+        table = Table(
+            cat_rows,
+            colWidths=[total_width * 0.52, total_width * 0.20, total_width * 0.28],
+            repeatRows=1,
+        )
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), C_ACCENT),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, C_SURFACE]),
+                    ("GRID", (0, 0), (-1, -1), 0.7, C_BORDER),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ]
+            )
+        )
+        return table
+
+    if radar:
+        right_width = width * 0.40
+        cat_table = _styled_cat_table(right_width)
+        radar_img = fit_image(radar, width * 0.57, 8.2 * cm)
+        radar_layout = Table([[radar_img, cat_table]], colWidths=[width * 0.60, right_width])
+        radar_layout.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+        story.append(KeepTogether([radar_layout]))
+    else:
+        story.append(_styled_cat_table(width * 0.64))
+
+    story.append(Spacer(1, 0.24 * cm))
+    story.append(Paragraph("항목 점수", styles["title"]))
+
+    subitem_chart = chart_subitem_scores(summary_scores)
+    if subitem_chart:
+        story.append(fit_image(subitem_chart, width, 9.6 * cm))
+
+    rows = flatten_scores(summary_scores)
+    if rows:
+        # split tables away from charts to prevent clipping
+        story.append(PageBreak())
+        story.append(
+            section_header(
+                "2-1. 항목 점수",
+                "항목 점수와 항목 설명을 함께 확인합니다.",
+                styles,
+                width,
+            )
+        )
+        story.append(Spacer(1, 0.2 * cm))
+
+        detail_rows = [
+            [
+                Paragraph("항목", styles["table_header"]),
+                Paragraph("내용", styles["table_header"]),
+                Paragraph("점수", styles["table_header"]),
+                Paragraph("요약", styles["table_header"]),
+            ]
+        ]
+        for row in rows:
+            score = row["score"]
+            detail_rows.append(
+                [
+                    Paragraph(esc(row["category"]), styles["table_cell"]),
+                    Paragraph(esc(row["item"]), styles["table_cell"]),
+                    Paragraph(f"{score:.1f}", ParagraphStyle("td_num", parent=styles["table_number"], textColor=colors.HexColor(score_color_hex(score)))),
+                    Paragraph(score_grade(score), ParagraphStyle("td_grade", parent=styles["table_center"], textColor=colors.HexColor(score_color_hex(score)))),
+                ]
+            )
+
+        detail_table = Table(detail_rows, colWidths=[width * 0.20, width * 0.44, width * 0.12, width * 0.24], repeatRows=1, splitByRow=1)
+        detail_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), C_ACCENT),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, C_SURFACE]),
+                    ("GRID", (0, 0), (-1, -1), 0.7, C_BORDER),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ]
+            )
+        )
+        story.append(detail_table)
+
+        story.append(PageBreak())
+        story.append(
+            section_header(
+                "2-2. 항목 설명",
+                "세부 평가 항목의 의미를 확인하고 다음 수업 액션을 정리합니다.",
+                styles,
+                width,
+            )
+        )
+        story.append(Spacer(1, 0.2 * cm))
+        story.append(Paragraph("항목 설명", styles["title"]))
+        story.append(Paragraph("설명을 확인하고 다음 수업 액션을 정리합니다.", styles["small"]))
+        story.append(Spacer(1, 0.1 * cm))
+
+        guide_rows = [[Paragraph("항목", styles["table_header"]), Paragraph("설명", styles["table_header"])]]
+        for row in rows:
+            guide_rows.append(
+                [
+                    Paragraph(esc(row["item"]), styles["table_cell"]),
+                    Paragraph(esc(SUBITEM_DESCRIPTIONS.get(row["item_key"], "설명 없음")), styles["table_cell"]),
+                ]
+            )
+
+        guide_table = Table(guide_rows, colWidths=[width * 0.29, width * 0.71], repeatRows=1, splitByRow=1)
+        guide_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), C_ACCENT),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, C_SURFACE_ALT]),
+                    ("GRID", (0, 0), (-1, -1), 0.7, C_BORDER),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ]
+            )
+        )
+        story.append(guide_table)
+
+    return story
+
+def build_insight_section(analysis: dict[str, Any], styles: dict[str, ParagraphStyle], width: float) -> list:
+    story: list = []
+
+    strengths = analysis.get("overall_strengths", []) if isinstance(analysis.get("overall_strengths", []), list) else []
+    issues = analysis.get("overall_issues", []) if isinstance(analysis.get("overall_issues", []), list) else []
+    evidences = analysis.get("overall_evidences", []) if isinstance(analysis.get("overall_evidences", []), list) else []
+
+    story.append(
+        section_header(
+            "3. 개선 인사이트",
+            "강점과 개선 필요 사항을 근거와 함께 명확히 구분해 제시합니다.",
+            styles,
+            width,
+        )
+    )
+    story.append(Spacer(1, 0.26 * cm))
+
+    strength_bg = C_SURFACE
+    strength_bg_alt = C_SURFACE_ALT
+    strength_border = C_BORDER
+    issue_bg = C_SURFACE
+    issue_bg_alt = C_SURFACE_ALT
+    issue_border = C_BORDER
+
+    section_label_style = ParagraphStyle(
+        "InsightSectionLabel",
+        parent=styles["title"],
+        fontSize=11,
+        leading=14,
+        textColor=C_WHITE,
+    )
+
+    def insight_label(text: str, bg_color: colors.Color) -> Table:
+        label = Table([[Paragraph(esc(text), section_label_style)]], colWidths=[width])
+        label.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), bg_color),
+                    ("TOPPADDING", (0, 0), (-1, -1), 7),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                ]
+            )
+        )
+        return label
+
+    story.append(insight_label("강의 강점", C_ACCENT))
+    story.append(Spacer(1, 0.1 * cm))
+
+    if strengths:
+        for idx, value in enumerate(strengths, start=1):
+            row = Table([[Paragraph(f"{idx}. {esc(value)}", styles["bullet"])]], colWidths=[width])
+            row.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, -1), strength_bg if idx % 2 else strength_bg_alt),
+                        ("BOX", (0, 0), (-1, -1), 0.8, strength_border),
+                        ("TOPPADDING", (0, 0), (-1, -1), 7),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ]
+                )
+            )
+            story.append(row)
+            story.append(Spacer(1, 0.08 * cm))
+    else:
+        row = Table([[Paragraph("- 추출된 강점 정보가 없습니다.", styles["small"])]], colWidths=[width])
+        row.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), strength_bg_alt),
+                    ("BOX", (0, 0), (-1, -1), 0.8, strength_border),
+                    ("TOPPADDING", (0, 0), (-1, -1), 7),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ]
+            )
+        )
+        story.append(row)
+
+    story.append(Spacer(1, 0.2 * cm))
+    story.append(insight_label("개선 필요 사항", C_ACCENT))
+    story.append(Spacer(1, 0.1 * cm))
+
+    if issues:
+        for idx, issue in enumerate(issues, start=1):
+            blocks: list = [Paragraph(f"{idx}. {esc(issue)}", styles["bullet"])]
+            if idx - 1 < len(evidences):
+                blocks.append(Spacer(1, 0.06 * cm))
+                blocks.append(Paragraph(f"근거: {esc(evidences[idx - 1])}", styles["evidence"]))
+
+            row = Table([[blocks]], colWidths=[width])
+            row.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, -1), issue_bg if idx % 2 else issue_bg_alt),
+                        ("BOX", (0, 0), (-1, -1), 0.8, issue_border),
+                        ("TOPPADDING", (0, 0), (-1, -1), 8),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ]
+                )
+            )
+            story.append(row)
+            story.append(Spacer(1, 0.09 * cm))
+    else:
+        row = Table([[Paragraph("- 추출된 개선 이슈 정보가 없습니다.", styles["small"])]], colWidths=[width])
+        row.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), issue_bg_alt),
+                    ("BOX", (0, 0), (-1, -1), 0.8, issue_border),
+                    ("TOPPADDING", (0, 0), (-1, -1), 8),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ]
+            )
+        )
+        story.append(row)
 
     return story
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 진입점
-# ──────────────────────────────────────────────────────────────────────────────
+def load_analysis_json(path: str) -> dict[str, Any]:
+    raw = Path(path).read_bytes()
+    for encoding in ("utf-8-sig", "utf-8", "cp949", "euc-kr"):
+        try:
+            parsed = json.loads(raw.decode(encoding))
+            if isinstance(parsed, dict):
+                return parsed
+            raise ValueError("JSON 루트는 객체(dict)여야 합니다.")
+        except UnicodeDecodeError:
+            continue
+
+    raise UnicodeDecodeError("analysis_json", raw, 0, len(raw), "지원하는 인코딩(utf-8/cp949/euc-kr)으로 읽지 못했습니다.")
 
 
 def generate_report(analysis_json_path: str, output_pdf_path: str) -> None:
-    with open(analysis_json_path, encoding="utf-8") as f:
-        data = json.load(f)
+    data = load_analysis_json(analysis_json_path)
 
-    setup_matplotlib_korean()
-    reg, bold = register_korean_fonts()
+    reg_font, bold_font, mpl_fonts = register_korean_fonts()
+    setup_matplotlib_fonts(mpl_fonts)
+    styles = make_styles(reg_font, bold_font)
 
-    out = Path(output_pdf_path)
-    out.parent.mkdir(parents=True, exist_ok=True)
+    out_path = Path(output_pdf_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
     doc = SimpleDocTemplate(
-        str(out),
+        str(out_path),
         pagesize=A4,
-        leftMargin=2 * cm,
-        rightMargin=2 * cm,
-        topMargin=2 * cm,
-        bottomMargin=2.2 * cm,
+        leftMargin=1.6 * cm,
+        rightMargin=1.6 * cm,
+        topMargin=1.6 * cm,
+        bottomMargin=1.8 * cm,
         title="강의 분석 리포트",
         author="EduInsight AI",
     )
 
-    styles = make_styles(reg, bold)
     analysis = data.get("analysis", {})
-    on_first, on_later = _make_page_callback(reg)
 
     story: list = []
-    story.extend(build_cover(data, styles, reg, bold))
-    story.extend(build_language_quality(analysis, styles, reg, bold))
-    story.extend(build_scores(analysis, styles, reg, bold))
-    story.extend(build_insights(analysis, styles, reg, bold))
+    story.extend(build_cover(data, analysis, styles, doc.width))
+    story.extend(build_language_section(analysis, styles, doc.width))
+    story.extend(build_scores_section(analysis, styles, doc.width))
+    story.append(PageBreak())
+    story.extend(build_insight_section(analysis, styles, doc.width))
 
-    doc.build(story, onFirstPage=on_first, onLaterPages=on_later)
-    print(f"리포트 생성 완료: {out}")
+    cb = page_callback(reg_font)
+    doc.build(story, onFirstPage=cb, onLaterPages=cb)
+    print(f"리포트 생성 완료: {out_path}")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="강의 분석 리포트 생성기 (analysis.json → PDF)")
-    parser.add_argument("--input", required=True, help="analysis.json 파일 경로")
+    parser = argparse.ArgumentParser(description="강의 분석 JSON으로 PDF 리포트를 생성합니다.")
+    parser.add_argument("--input", required=True, help="입력 analysis.json 파일 경로")
     parser.add_argument("--output", required=True, help="출력 PDF 파일 경로")
     args = parser.parse_args()
 
     generate_report(args.input, args.output)
+
+
+
+
+
+
 
 
 
