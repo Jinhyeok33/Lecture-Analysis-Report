@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
@@ -155,27 +155,26 @@
           </div>
 
           <div class="form-card">
-            <h3>Metadata Input</h3>
+            <h3>Metadata 입력</h3>
             <div class="metadata-csv-upload">
               <label class="field">
-                <span>Upload Metadata CSV (Optional)</span>
+                <span>CSV로 메타데이터 업로드 (선택)</span>
                 <input
                   type="file"
                   id="metadata-csv"
-                  name="metadata_csv"
                   accept=".csv"
                   aria-describedby="csv-help"
                 />
               </label>
               <p id="csv-help" class="field-help">
-                CSV headers: course_id, course_name, date, time, subject, content, instructor, sub_instructor
+                CSV 헤더: course_id, course_name, date, time, subject, content, instructor, sub_instructor
               </p>
               <div id="csv-session-picker" class="csv-session-picker" hidden>
                 <label class="field">
-                  <span>Select Session</span>
+                  <span>강의 세션 선택</span>
                   <select id="csv-session-select"></select>
                 </label>
-                <button class="btn btn-secondary csv-apply-btn" type="button" id="csv-apply">Apply</button>
+                <button class="btn btn-secondary csv-apply-btn" type="button" id="csv-apply">적용</button>
               </div>
             </div>
             <hr class="form-divider" />
@@ -185,7 +184,7 @@
                 <input
                   type="text"
                   name="course_id"
-                  placeholder="?: LEC-2026-001"
+                  placeholder="예: LEC-2026-001"
                   required
                   spellcheck="false"
                 />
@@ -195,7 +194,7 @@
                 <input
                   type="text"
                   name="course_name"
-                  placeholder="e.g., Intro to Data Literacy"
+                  placeholder="예: 데이터 리터러시 입문"
                   required
                 />
               </label>
@@ -205,14 +204,19 @@
               </label>
               <label class="field">
                 <span>time</span>
-                <input type="text" name="time" placeholder="e.g., 09:00-10:30" required />
+                <input
+                  type="text"
+                  name="time"
+                  placeholder="예: 09:00 ~ 12:00"
+                  required
+                />
               </label>
               <label class="field">
                 <span>subject</span>
                 <input
                   type="text"
                   name="subject"
-                  placeholder="e.g., 09:00-12:00"
+                  placeholder="예: 확률과 통계"
                   required
                 />
               </label>
@@ -221,7 +225,7 @@
                 <textarea
                   name="content"
                   rows="3"
-                  placeholder="e.g., probability, expectation, variance"
+                  placeholder="예: 확률 분포, 기대값, 분산"
                   required
                 ></textarea>
               </label>
@@ -230,7 +234,7 @@
                 <input
                   type="text"
                   name="instructor"
-                  placeholder="e.g., Kim Insight"
+                  placeholder="예: 김인사이트"
                   required
                 />
               </label>
@@ -239,7 +243,7 @@
                 <input
                   type="text"
                   name="sub_instructor"
-                  placeholder="e.g., Lee Assistant"
+                  placeholder="예: 이조교"
                   required
                 />
               </label>

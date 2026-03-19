@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   color-scheme: light;
   --bg: #f6efe8;
   --bg-soft: #fffaf5;
@@ -579,7 +579,6 @@ main {
   color: var(--text-muted);
   font-size: 0.86rem;
 }
-
 
 .metadata-csv-upload {
   margin-bottom: 4px;
