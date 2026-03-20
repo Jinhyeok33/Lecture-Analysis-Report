@@ -22,10 +22,11 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
-from reportlab.lib.utils import ImageReader
+from reportlab.lib.utils import ImageReader, simpleSplit
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
+    Flowable,
     HRFlowable,
     Image,
     KeepTogether,
@@ -113,22 +114,28 @@ FONT_CANDIDATES = [
     {
         "regular_name": "MalgunGothic",
         "bold_name": "MalgunGothicBold",
+        "quote_name": "MalgunGothicLight",
         "regular_path": "C:/Windows/Fonts/malgun.ttf",
         "bold_path": "C:/Windows/Fonts/malgunbd.ttf",
+        "quote_path": "C:/Windows/Fonts/malgunsl.ttf",
         "matplotlib_family": "Malgun Gothic",
     },
     {
         "regular_name": "NanumGothic",
         "bold_name": "NanumGothicBold",
+        "quote_name": "NanumGothic",
         "regular_path": "C:/Windows/Fonts/NanumGothic.ttf",
         "bold_path": "C:/Windows/Fonts/NanumGothicBold.ttf",
+        "quote_path": "C:/Windows/Fonts/NanumGothic.ttf",
         "matplotlib_family": "NanumGothic",
     },
     {
         "regular_name": "NanumGothic",
         "bold_name": "NanumGothicBold",
+        "quote_name": "NanumGothic",
         "regular_path": "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
         "bold_path": "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf",
+        "quote_path": "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
         "matplotlib_family": "NanumGothic",
     },
 ]
@@ -144,7 +151,7 @@ def _register_font(name: str, path: Path) -> bool:
         return False
 
 
-def register_korean_fonts() -> tuple[str, str, list[str]]:
+def register_korean_fonts() -> tuple[str, str, str, list[str]]:
     for candidate in FONT_CANDIDATES:
         reg_path = Path(candidate["regular_path"])
         if not reg_path.exists():
@@ -152,6 +159,7 @@ def register_korean_fonts() -> tuple[str, str, list[str]]:
 
         reg_name = candidate["regular_name"]
         bold_name = candidate["bold_name"]
+        quote_name = candidate["quote_name"]
 
         if not _register_font(reg_name, reg_path):
             continue
@@ -162,10 +170,16 @@ def register_korean_fonts() -> tuple[str, str, list[str]]:
         else:
             bold_name = reg_name
 
-        return reg_name, bold_name, [candidate["matplotlib_family"]]
+        quote_path = Path(candidate["quote_path"])
+        if quote_path.exists():
+            _register_font(quote_name, quote_path)
+        else:
+            quote_name = reg_name
+
+        return reg_name, bold_name, quote_name, [candidate["matplotlib_family"]]
 
     print("[경고] 한글 폰트를 찾지 못해 기본 폰트를 사용합니다.")
-    return "Helvetica", "Helvetica-Bold", ["DejaVu Sans"]
+    return "Helvetica", "Helvetica-Bold", "Helvetica-Oblique", ["DejaVu Sans"]
 
 
 def setup_matplotlib_fonts(font_families: list[str]) -> None:
@@ -194,6 +208,92 @@ def as_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def normalize_evidence_entry(value: Any) -> dict[str, str] | None:
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        return {
+            "item": "",
+            "quote": text,
+            "reason": "",
+        }
+
+    if not isinstance(value, dict):
+        return None
+
+    item_key = as_text(value.get("item"), "")
+    quote = as_text(value.get("quote"), "")
+    reason = as_text(value.get("reason") or value.get("explanation"), "")
+
+    if not item_key and not quote and not reason:
+        return None
+
+    return {
+        "item": SUBITEM_LABELS.get(item_key, item_key),
+        "quote": quote,
+        "reason": reason,
+    }
+
+
+class EvidenceTagPill(Flowable):
+    def __init__(self, text: str, styles: dict[str, ParagraphStyle]) -> None:
+        super().__init__()
+        self.text = text
+        self.style = styles["evidence_tag"]
+        self.paragraph = Paragraph(esc(text), self.style)
+        self.pad_x = 7
+        self.pad_y = 2.5
+        self.radius = 4
+        self.bg_color = colors.HexColor("#6E84A3")
+        self.border_color = colors.HexColor("#556A86")
+        self._width = 0
+        self._height = 0
+
+    def wrap(self, availWidth: float, availHeight: float) -> tuple[float, float]:
+        text_width = min(pdfmetrics.stringWidth(self.text, self.style.fontName, self.style.fontSize), availWidth)
+        desired_width = max(text_width + (self.pad_x * 2), 2.05 * cm)
+        self._width = min(desired_width, availWidth)
+        _, para_height = self.paragraph.wrap(max(self._width - (self.pad_x * 2), 1), availHeight)
+        self._height = para_height + (self.pad_y * 2)
+        return self._width, self._height
+
+    def draw(self) -> None:
+        canv = self.canv
+        canv.saveState()
+        canv.setFillColor(self.bg_color)
+        canv.setStrokeColor(self.border_color)
+        canv.setLineWidth(0.6)
+        canv.roundRect(0, 0, self._width, self._height, self.radius, stroke=1, fill=1)
+        self.paragraph.drawOn(canv, self.pad_x, self.pad_y - 0.2)
+        canv.restoreState()
+
+
+def evidence_tag(text: str, styles: dict[str, ParagraphStyle]) -> Table:
+    pill = Table([[Paragraph(esc(text), styles["evidence_tag"])]], colWidths=[2.0 * cm])
+    pill.hAlign = "LEFT"
+    pill.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#6E84A3")),
+                ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#556A86")),
+                ("ROUNDEDCORNERS", [4, 4, 4, 4]),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    return pill
+
+
+def evidence_quote_block(text: str, styles: dict[str, ParagraphStyle], width: float) -> Paragraph:
+    quoted = f'"{esc(text)}"'
+    return Paragraph(quoted, styles["evidence_quote"])
 
 
 def average(values: list[float]) -> float:
@@ -259,7 +359,7 @@ def flatten_scores(summary_scores: dict[str, dict[str, float]]) -> list[dict[str
     return rows
 
 
-def make_styles(reg: str, bold: str) -> dict[str, ParagraphStyle]:
+def make_styles(reg: str, bold: str, quote_font: str) -> dict[str, ParagraphStyle]:
     def ps(name: str, **kwargs: Any) -> ParagraphStyle:
         return ParagraphStyle(name, **kwargs)
 
@@ -344,6 +444,41 @@ def make_styles(reg: str, bold: str) -> dict[str, ParagraphStyle]:
             leading=14,
             textColor=C_MUTED,
             leftIndent=16,
+            wordWrap="CJK",
+        ),
+        "evidence_tag": ps(
+            "EvidenceTag",
+            fontName=bold,
+            fontSize=6.4,
+            leading=7.8,
+            textColor=C_WHITE,
+            alignment=TA_CENTER,
+            wordWrap="CJK",
+        ),
+        "evidence_quote": ps(
+            "EvidenceQuote",
+            fontName=reg,
+            fontSize=8.9,
+            leading=13.8,
+            textColor=colors.HexColor("#6A5A4C"),
+            wordWrap="CJK",
+        ),
+        "evidence_quote_mark": ps(
+            "EvidenceQuoteMark",
+            fontName=quote_font,
+            fontSize=8.8,
+            leading=13.8,
+            textColor=colors.HexColor("#A39D99"),
+            alignment=TA_CENTER,
+            wordWrap="CJK",
+        ),
+        "evidence_reason": ps(
+            "EvidenceReason",
+            fontName=reg,
+            fontSize=9.1,
+            leading=14,
+            textColor=C_MUTED,
+            leftIndent=2,
             wordWrap="CJK",
         ),
         "metric_label": ps(
@@ -1180,10 +1315,25 @@ def build_insight_section(analysis: dict[str, Any], styles: dict[str, ParagraphS
 
     if issues:
         for idx, issue in enumerate(issues, start=1):
-            blocks: list = [Paragraph(f"{idx}. {esc(issue)}", styles["bullet"])]
+            blocks: list = []
             if idx - 1 < len(evidences):
-                blocks.append(Spacer(1, 0.06 * cm))
-                blocks.append(Paragraph(f"근거: {esc(evidences[idx - 1])}", styles["evidence"]))
+                evidence = normalize_evidence_entry(evidences[idx - 1])
+                if evidence:
+                    if evidence["item"]:
+                        blocks.append(evidence_tag(evidence["item"], styles))
+                        blocks.append(Spacer(1, 0.07 * cm))
+
+            blocks.append(Paragraph(f"{idx}. {esc(issue)}", styles["bullet"]))
+
+            if idx - 1 < len(evidences):
+                evidence = normalize_evidence_entry(evidences[idx - 1])
+                if evidence:
+                    if evidence["quote"]:
+                        blocks.append(Spacer(1, 0.08 * cm))
+                        blocks.append(evidence_quote_block(evidence["quote"], styles, width - 1.15 * cm))
+                    if evidence["reason"]:
+                        blocks.append(Spacer(1, 0.05 * cm))
+                        blocks.append(Paragraph(f"근거: {esc(evidence['reason'])}", styles["evidence_reason"]))
 
             row = Table([[blocks]], colWidths=[width])
             row.setStyle(
@@ -1236,9 +1386,9 @@ def load_analysis_json(path: str) -> dict[str, Any]:
 def generate_report(analysis_json_path: str, output_pdf_path: str) -> None:
     data = load_analysis_json(analysis_json_path)
 
-    reg_font, bold_font, mpl_fonts = register_korean_fonts()
+    reg_font, bold_font, quote_font, mpl_fonts = register_korean_fonts()
     setup_matplotlib_fonts(mpl_fonts)
-    styles = make_styles(reg_font, bold_font)
+    styles = make_styles(reg_font, bold_font, quote_font)
 
     out_path = Path(output_pdf_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)

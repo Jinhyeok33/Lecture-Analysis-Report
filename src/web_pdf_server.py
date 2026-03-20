@@ -1,10 +1,4 @@
-"""
-Frontend + PDF API 로컬 서버.
-
-기능:
-  - frontend 정적 파일 서빙
-  - POST /api/report/pdf 로 리포트 PDF 생성 후 반환
-"""
+"""Serve the frontend and bridge selected API routes to the real analysis server."""
 
 from __future__ import annotations
 
@@ -16,9 +10,11 @@ from functools import partial
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
 
-# Ensure src/ is on sys.path so sibling modules are importable
+# Ensure src/ is on sys.path so sibling modules are importable.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from report_generator import generate_report
@@ -27,6 +23,16 @@ from report_generator import generate_report
 ROOT_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = ROOT_DIR / "frontend"
 TMP_PDF_DIR = ROOT_DIR / "tmp" / "pdfs"
+DEFAULT_API_BASE_URL = "http://127.0.0.1:8000"
+PROXY_TIMEOUT_SECONDS = 1800
+PROXIED_GET_PATHS = {
+    "/api/download/json",
+    "/api/download/pdf",
+    "/api/health",
+}
+PROXIED_POST_PATHS = {
+    "/api/analyze",
+}
 
 
 def _parse_metric_number(value: object, fallback: int) -> int:
@@ -155,15 +161,31 @@ def normalize_report_payload(data: dict) -> dict:
 
 
 class AppHandler(SimpleHTTPRequestHandler):
-    def do_POST(self) -> None:
-        parsed = urlparse(self.path)
-        if parsed.path != "/api/report/pdf":
-            self.send_error(HTTPStatus.NOT_FOUND, "Not Found")
-            return
+    def __init__(self, *args, directory: str, api_base_url: str, **kwargs):
+        self.api_base_url = api_base_url.rstrip("/")
+        super().__init__(*args, directory=directory, **kwargs)
 
+    def do_GET(self) -> None:
+        parsed = urlsplit(self.path)
+        if parsed.path in PROXIED_GET_PATHS:
+            self._proxy_request()
+            return
+        super().do_GET()
+
+    def do_POST(self) -> None:
+        parsed = urlsplit(self.path)
+        if parsed.path == "/api/report/pdf":
+            self._handle_pdf_request()
+            return
+        if parsed.path in PROXIED_POST_PATHS:
+            self._proxy_request()
+            return
+        self.send_error(HTTPStatus.NOT_FOUND, "Not Found")
+
+    def _handle_pdf_request(self) -> None:
         length = self.headers.get("Content-Length")
         if not length:
-            self.send_error(HTTPStatus.BAD_REQUEST, "Missing Content-Length")
+            self._send_json_error(HTTPStatus.BAD_REQUEST, "Missing Content-Length")
             return
 
         try:
@@ -174,11 +196,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             normalized = normalize_report_payload(payload)
             pdf_bytes = self._build_pdf_bytes(normalized)
         except Exception as exc:
-            self.send_response(HTTPStatus.BAD_REQUEST)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.end_headers()
-            error_body = {"ok": False, "error": str(exc)}
-            self.wfile.write(json.dumps(error_body, ensure_ascii=False).encode("utf-8"))
+            self._send_json_error(HTTPStatus.BAD_REQUEST, str(exc))
             return
 
         self.send_response(HTTPStatus.OK)
@@ -194,18 +212,74 @@ class AppHandler(SimpleHTTPRequestHandler):
             temp_path = Path(temp_dir)
             input_json = temp_path / "analysis.json"
             output_pdf = temp_path / "report.pdf"
-            with open(input_json, "w", encoding="utf-8") as fp:
+            with input_json.open("w", encoding="utf-8") as fp:
                 json.dump(payload, fp, ensure_ascii=False, indent=2)
             generate_report(str(input_json), str(output_pdf))
             return output_pdf.read_bytes()
 
+    def _proxy_request(self) -> None:
+        parsed = urlsplit(self.path)
+        target_url = f"{self.api_base_url}{parsed.path}"
+        if parsed.query:
+            target_url = f"{target_url}?{parsed.query}"
 
-def run_server(host: str, port: int) -> None:
-    handler = partial(AppHandler, directory=str(FRONTEND_DIR))
+        body = None
+        content_length = self.headers.get("Content-Length")
+        if self.command in {"POST", "PUT", "PATCH"} and content_length:
+            body = self.rfile.read(int(content_length))
+
+        headers: dict[str, str] = {}
+        for header_name in ("Content-Type", "Accept"):
+            header_value = self.headers.get(header_name)
+            if header_value:
+                headers[header_name] = header_value
+
+        request = Request(target_url, data=body, method=self.command, headers=headers)
+
+        try:
+            with urlopen(request, timeout=PROXY_TIMEOUT_SECONDS) as upstream:
+                payload = upstream.read()
+                self._relay_response(upstream.status, upstream.headers, payload)
+        except HTTPError as exc:
+            payload = exc.read()
+            self._relay_response(exc.code, exc.headers, payload)
+        except URLError as exc:
+            self._send_json_error(
+                HTTPStatus.BAD_GATEWAY,
+                f"Upstream analysis server is unreachable: {exc.reason}",
+            )
+
+    def _relay_response(self, status: int, headers, payload: bytes) -> None:
+        self.send_response(status)
+        for header_name in ("Content-Type", "Content-Disposition", "Content-Length"):
+            header_value = headers.get(header_name)
+            if header_value:
+                self.send_header(header_name, header_value)
+        if "Content-Length" not in headers:
+            self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _send_json_error(self, status: int, message: str) -> None:
+        raw = json.dumps({"ok": False, "error": message}, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+
+def run_server(host: str, port: int, api_base_url: str) -> None:
+    handler = partial(
+        AppHandler,
+        directory=str(FRONTEND_DIR),
+        api_base_url=api_base_url,
+    )
     server = ThreadingHTTPServer((host, port), handler)
     print(f"Serving frontend: {FRONTEND_DIR}")
     print(f"Open: http://{host}:{port}/index.html")
-    print("PDF API: POST /api/report/pdf")
+    print(f"Proxy API base: {api_base_url}")
+    print("Local PDF API: POST /api/report/pdf")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -215,12 +289,13 @@ def run_server(host: str, port: int) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Frontend + PDF API 로컬 서버")
-    parser.add_argument("--host", default="127.0.0.1", help="바인딩 호스트")
-    parser.add_argument("--port", type=int, default=5500, help="포트 번호")
+    parser = argparse.ArgumentParser(description="EduInsightAI frontend bridge server")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=5500)
+    parser.add_argument("--api-base-url", default=DEFAULT_API_BASE_URL)
     args = parser.parse_args()
 
-    run_server(args.host, args.port)
+    run_server(args.host, args.port, args.api_base_url)
 
 
 if __name__ == "__main__":

@@ -121,6 +121,14 @@ function showToast(message) {
 }
 
 function disableDownloads() {
+  if (pdfUrl?.startsWith("blob:")) {
+    URL.revokeObjectURL(pdfUrl);
+  }
+  if (jsonUrl?.startsWith("blob:")) {
+    URL.revokeObjectURL(jsonUrl);
+  }
+  pdfUrl = null;
+  jsonUrl = null;
   downloadPdf.setAttribute("aria-disabled", "true");
   downloadJson.setAttribute("aria-disabled", "true");
   downloadPdf.removeAttribute("download");
@@ -129,12 +137,17 @@ function disableDownloads() {
   downloadJson.href = "#";
 }
 
-function enableDownloads(pdfBlob, jsonBlob) {
-  if (pdfUrl) URL.revokeObjectURL(pdfUrl);
-  if (jsonUrl) URL.revokeObjectURL(jsonUrl);
+function enableDownloads(downloads) {
+  const nextPdfUrl = resolveDownloadUrl(downloads?.pdfUrl || downloads?.pdf_url);
+  const nextJsonUrl = resolveDownloadUrl(downloads?.jsonUrl || downloads?.json_url);
 
-  pdfUrl = URL.createObjectURL(pdfBlob);
-  jsonUrl = URL.createObjectURL(jsonBlob);
+  if (!nextPdfUrl || !nextJsonUrl) {
+    disableDownloads();
+    return;
+  }
+
+  pdfUrl = nextPdfUrl;
+  jsonUrl = nextJsonUrl;
 
   downloadPdf.setAttribute("aria-disabled", "false");
   downloadJson.setAttribute("aria-disabled", "false");
@@ -144,175 +157,256 @@ function enableDownloads(pdfBlob, jsonBlob) {
   downloadJson.setAttribute("download", "analysis.json");
 }
 
-function clampScore(value) {
-  return Math.max(60, Math.min(96, value));
-}
-
-function computeScore(seed, multiplier) {
-  return clampScore(70 + (seed * multiplier) % 26);
-}
-
-function escapePdf(text) {
-  return text.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
-}
-
-function createFallbackPdfBlob() {
-  const lines = [
-    "EduInsightAI Report",
-    "Analysis summary is ready.",
-    "Please review the JSON for details.",
-  ];
-  const escaped = lines.map(escapePdf);
-  const textLines = escaped
-    .map((line, idx) => `${idx === 0 ? "" : "0 -22 Td "}(${line}) Tj`)
-    .join(" ");
-  const stream = `BT /F1 18 Tf 72 720 Td ${textLines} ET`;
-
-  const objects = [];
-  objects.push("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
-  objects.push("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
-  objects.push(
-    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n"
-  );
-  objects.push(`4 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}\nendstream\nendobj\n`);
-  objects.push("5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n");
-
-  const header = "%PDF-1.4\n";
-  let offset = header.length;
-  const xrefEntries = ["0000000000 65535 f \n"];
-
-  objects.forEach((obj) => {
-    const entry = offset.toString().padStart(10, "0");
-    xrefEntries.push(`${entry} 00000 n \n`);
-    offset += obj.length;
-  });
-
-  const xref = `xref\n0 ${objects.length + 1}\n${xrefEntries.join("")}`;
-  const trailer = `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${offset}\n%%EOF`;
-
-  const pdfContent = header + objects.join("") + xref + trailer;
-  return new Blob([pdfContent], { type: "application/pdf" });
+function clampPercent(value) {
+  return Math.max(0, Math.min(100, Math.round(value)));
 }
 
 function clampFive(value) {
   return Math.max(1, Math.min(5, value));
 }
 
-function toFivePointScore(scoreText) {
-  const raw = extractScoreValue(scoreText);
-  const score = raw > 0 ? raw / 20 : 3;
-  return Number.parseFloat(clampFive(score).toFixed(1));
+function clampUnit(value) {
+  return Math.max(0, Math.min(1, value));
 }
 
-function parseMetricNumber(text, fallback = 0) {
-  if (typeof text !== "string") return fallback;
-  const matched = text.match(/\d+/);
-  if (!matched) return fallback;
-  const value = Number.parseInt(matched[0], 10);
-  return Number.isNaN(value) ? fallback : value;
+function averageNumbers(values, fallback = 0) {
+  const numbers = values.filter((value) => typeof value === "number" && Number.isFinite(value));
+  if (!numbers.length) return fallback;
+  return numbers.reduce((sum, value) => sum + value, 0) / numbers.length;
 }
 
-function buildReportPayload(data) {
-    const structure = toFivePointScore(data.scores?.structure || "");
-  const delivery = toFivePointScore(data.scores?.delivery || "");
-  const interaction = toFivePointScore(data.scores?.interaction || "");
-  const concept = toFivePointScore(data.scores?.concept || "");
-  const practice = toFivePointScore(data.scores?.practice || "");
+function numericValues(record) {
+  if (!record || typeof record !== "object") return [];
+  return Object.values(record).filter((value) => typeof value === "number" && Number.isFinite(value));
+}
 
-  const repeatCount = parseMetricNumber(data.metrics?.repeat || "", 5);
-  const completePercent = parseMetricNumber(data.metrics?.complete || "", 84);
-  const speedWpm = parseMetricNumber(data.metrics?.speed || "", 150);
-  const questionCount = parseMetricNumber(data.metrics?.question || "", 6);
-  const incompleteRatio = Number.parseFloat(
-    Math.max(0, Math.min(1, (100 - completePercent) / 100)).toFixed(2)
+function averageScoreGroup(group) {
+  return averageNumbers(numericValues(group), 0);
+}
+
+function fivePointToPercent(score) {
+  if (typeof score !== "number" || !Number.isFinite(score) || score <= 0) {
+    return 0;
+  }
+  return clampPercent((clampFive(score) / 5) * 100);
+}
+
+function resolveDownloadUrl(path) {
+  if (typeof path !== "string" || !path.trim()) return "";
+  return new URL(path, window.location.href).toString();
+}
+
+function sanitizeText(value, fallback = "-") {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function firstNonEmpty(values, fallback = "") {
+  if (!Array.isArray(values)) return fallback;
+  const found = values.find((value) => typeof value === "string" && value.trim());
+  return found ? found.trim() : fallback;
+}
+
+function summarizeSessionField(sessions, fieldName) {
+  const values = Array.isArray(sessions)
+    ? sessions
+        .map((session) => sanitizeText(session?.[fieldName], ""))
+        .filter(Boolean)
+    : [];
+
+  if (!values.length) return "-";
+  if (values.length === 1) return values[0];
+  return `${values[0]} 외 ${values.length - 1}건`;
+}
+
+function formatScoreText(score) {
+  return `${clampPercent(score)}점`;
+}
+
+function describeDimension(type, score) {
+  switch (type) {
+    case "structure":
+      if (score >= 80) return "목표-전개-정리 흐름이 안정적입니다.";
+      if (score >= 60) return "구조는 유지되지만 핵심 강조 보강이 필요합니다.";
+      return "도입과 마무리 구조 보강이 필요합니다.";
+    case "concept":
+      if (score >= 80) return "핵심 개념 정의가 명확합니다.";
+      if (score >= 60) return "개념 설명은 가능하지만 예시 보강이 필요합니다.";
+      return "개념 정의와 비유 설명 보강이 필요합니다.";
+    case "practice":
+      if (score >= 80) return "예시와 실습 연결이 자연스럽습니다.";
+      if (score >= 60) return "실습 전환은 되지만 단계 안내를 더 보강해야 합니다.";
+      return "예시 제시와 실습 연결 흐름 개선이 필요합니다.";
+    case "interaction":
+      if (score >= 80) return "참여 유도와 응답 흐름이 좋습니다.";
+      if (score >= 60) return "질문은 있으나 상호작용 밀도를 더 높일 수 있습니다.";
+      return "이해 확인 질문과 응답 밀도 보강이 필요합니다.";
+    default:
+      return "-";
+  }
+}
+
+function deriveDeliveryScore(languageQuality = {}, conceptClarityMetrics = {}) {
+  const repeatScore = 1 - clampUnit((Number(languageQuality.repeat_ratio) || 0) / 0.35);
+  const incompleteScore = 1 - clampUnit((Number(languageQuality.incomplete_sentence_ratio) || 0) / 0.6);
+  const speechScore = clampUnit((Number(conceptClarityMetrics.score) || 3) / 5);
+  const deliveryScore = (repeatScore * 0.45 + incompleteScore * 0.35 + speechScore * 0.2) * 100;
+  return clampPercent(deliveryScore);
+}
+
+function formatRepeatMetric(languageQuality = {}) {
+  if (typeof languageQuality.total_filler_count === "number") {
+    return `${languageQuality.total_filler_count}회`;
+  }
+  if (typeof languageQuality.repeat_ratio === "number") {
+    return `${clampPercent(languageQuality.repeat_ratio * 100)}%`;
+  }
+  return "-";
+}
+
+function formatCompletenessMetric(languageQuality = {}) {
+  if (typeof languageQuality.incomplete_sentence_ratio !== "number") return "-";
+  return `${clampPercent((1 - languageQuality.incomplete_sentence_ratio) * 100)}%`;
+}
+
+function formatSpeedMetric(conceptClarityMetrics = {}) {
+  if (typeof conceptClarityMetrics.speech_rate_wpm !== "number") return "-";
+  return `${conceptClarityMetrics.speech_rate_wpm} WPM`;
+}
+
+function formatQuestionMetric(interactionMetrics = {}) {
+  if (typeof interactionMetrics.understanding_question_count !== "number") return "-";
+  return `${interactionMetrics.understanding_question_count}개`;
+}
+
+function priorityFromScore(score) {
+  if (score < 60) return "high";
+  if (score < 75) return "medium";
+  return "low";
+}
+
+function normalizeChunks(chunks) {
+  if (!Array.isArray(chunks)) return [];
+
+  return chunks.map((chunk, index) => {
+    const scoreGroups = Object.values(chunk?.scores || {}).flatMap((group) => numericValues(group));
+    const chunkScore = fivePointToPercent(averageNumbers(scoreGroups, 0));
+    const issue = firstNonEmpty(chunk?.issues, "");
+    const strength = firstNonEmpty(chunk?.strengths, "");
+    const evidence = Array.isArray(chunk?.evidence)
+      ? chunk.evidence.find((entry) => entry && typeof entry.reason === "string" && entry.reason.trim())
+      : null;
+    const summary =
+      issue ||
+      strength ||
+      sanitizeText(evidence?.reason, "") ||
+      "세부 분석 결과를 확인하세요.";
+    const timeRange = [sanitizeText(chunk?.start_time, ""), sanitizeText(chunk?.end_time, "")]
+      .filter(Boolean)
+      .join(" - ");
+
+    return {
+      title: timeRange
+        ? `Chunk ${chunk?.chunk_id || index + 1} (${timeRange})`
+        : `Chunk ${chunk?.chunk_id || index + 1}`,
+      priority: priorityFromScore(chunkScore),
+      summary,
+    };
+  });
+}
+
+function normalizeServerAnalysis(payload) {
+  const integrated = payload?.analysis && typeof payload.analysis === "object" ? payload.analysis : {};
+  const metadata = integrated.metadata || {};
+  const analysis = integrated.analysis || {};
+  const sessions = Array.isArray(metadata.sessions) ? metadata.sessions : [];
+  const primarySession = sessions[0] || {};
+
+  const structureScore = fivePointToPercent(averageScoreGroup(analysis.summary_scores?.lecture_structure));
+  const conceptScore = fivePointToPercent(averageScoreGroup(analysis.summary_scores?.concept_clarity));
+  const practiceScore = fivePointToPercent(averageScoreGroup(analysis.summary_scores?.practice_linkage));
+  const interactionScore = fivePointToPercent(averageScoreGroup(analysis.summary_scores?.interaction));
+  const deliveryScore = deriveDeliveryScore(
+    analysis.language_quality,
+    analysis.concept_clarity_metrics
   );
-  const repeatRatio = Number.parseFloat(Math.min(0.35, repeatCount / 40).toFixed(2));
-
-  const issues = Array.isArray(data.weaknesses) ? data.weaknesses : [];
-  const evidenceEntries = normalizeEvidenceEntries(data.evidence || data.evidences || []);
-  const evidences = evidenceEntries.map((entry) => `"${entry.quote}" - ${entry.reason}`);
+  const overallScoreValue = clampPercent(
+    averageNumbers(
+      [structureScore, deliveryScore, interactionScore, conceptScore, practiceScore],
+      0
+    )
+  );
 
   return {
-    lecture_id: `${data.date || "unknown"}_${data.course_id || "lecture"}`,
-    metadata: {
-      course_id: data.course_id || "-",
-      course_name: data.course_name || "-",
-      date: data.date || "-",
-      instructor: data.instructor || "-",
-      sub_instructor: data.sub_instructor || "-",
-      sessions: [
-        {
-          time: data.time || "-",
-          subject: data.subject || "-",
-          content: data.content || "-",
-        },
-      ],
+    lecture_id: sanitizeText(integrated.lecture_id || payload?.lecture_id, "unknown_lecture"),
+    course_id: sanitizeText(metadata.course_id),
+    course_name: sanitizeText(metadata.course_name),
+    date: sanitizeText(metadata.date),
+    time: sanitizeText(primarySession.time || summarizeSessionField(sessions, "time")),
+    subject: summarizeSessionField(sessions, "subject"),
+    content: summarizeSessionField(sessions, "content"),
+    instructor: sanitizeText(metadata.instructor),
+    sub_instructor: sanitizeText(metadata.sub_instructor),
+    overall: {
+      score: overallScoreValue,
+      level: getScoreLevel(overallScoreValue),
+      delta: overallScoreValue - 78,
     },
-    analysis: {
-      language_quality: {
-        repeat_expressions: {
-          이제: Math.max(1, repeatCount),
-          그래서: Math.max(1, Math.round(repeatCount * 0.8)),
-          어쨌든: Math.max(1, Math.round(repeatCount * 0.4)),
-        },
-        repeat_ratio: repeatRatio,
-        incomplete_sentence_ratio: incompleteRatio,
-        speech_style_ratio: {
-          formal: 0.9,
-          informal: 0.1,
-        },
-      },
-      concept_clarity_metrics: {
-        speech_rate_wpm: speedWpm,
-      },
-      interaction_metrics: {
-        understanding_question_count: questionCount,
-      },
-      summary_scores: {
-        lecture_structure: {
-          learning_objective_intro: clampFive(structure + 0.2),
-          previous_lesson_linkage: clampFive(structure - 0.3),
-          explanation_sequence: clampFive(structure + 0.1),
-          key_point_emphasis: clampFive(structure - 0.1),
-          closing_summary: clampFive(structure - 0.4),
-        },
-        concept_clarity: {
-          concept_definition: clampFive(concept + 0.2),
-          analogy_example_usage: clampFive(concept),
-          prerequisite_check: clampFive(concept - 0.2),
-        },
-        practice_linkage: {
-          example_appropriateness: clampFive(practice + 0.2),
-          practice_transition: clampFive(practice),
-          error_handling: clampFive(practice - 0.2),
-        },
-        interaction: {
-          participation_induction: clampFive(interaction - 0.2),
-          question_response_sufficiency: clampFive(interaction),
-        },
-      },
-      overall_strengths: Array.isArray(data.strengths) ? data.strengths : [],
-      overall_issues: issues,
-      overall_evidences: evidences,
+    scores: {
+      structure: formatScoreText(structureScore),
+      delivery: formatScoreText(deliveryScore),
+      interaction: formatScoreText(interactionScore),
+      concept: formatScoreText(conceptScore),
+      practice: formatScoreText(practiceScore),
     },
+    strengths: Array.isArray(analysis.overall_strengths)
+      ? analysis.overall_strengths.filter((value) => typeof value === "string" && value.trim())
+      : [],
+    weaknesses: Array.isArray(analysis.overall_issues)
+      ? analysis.overall_issues.filter((value) => typeof value === "string" && value.trim())
+      : [],
+    evidence: Array.isArray(analysis.overall_evidences) ? analysis.overall_evidences : [],
+    metrics: {
+      repeat: formatRepeatMetric(analysis.language_quality),
+      complete: formatCompletenessMetric(analysis.language_quality),
+      speed: formatSpeedMetric(analysis.concept_clarity_metrics),
+      question: formatQuestionMetric(analysis.interaction_metrics),
+    },
+    llm: {
+      structure: describeDimension("structure", structureScore),
+      concept: describeDimension("concept", conceptScore),
+      practice: describeDimension("practice", practiceScore),
+      interaction: describeDimension("interaction", interactionScore),
+    },
+    chunks: normalizeChunks(payload?.chunks),
   };
 }
 
-async function createPdfBlob(analysisData) {
-  const payload = buildReportPayload(analysisData);
-  const response = await fetch("/api/report/pdf", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
+async function readJsonResponse(response) {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { ok: response.ok, error: text };
+  }
+}
 
-  if (!response.ok) {
-    throw new Error(`PDF API failed: ${response.status}`);
+async function requestAnalysis() {
+  const response = await fetch("/api/analyze", {
+    method: "POST",
+    body: new FormData(form),
+  });
+  const payload = await readJsonResponse(response);
+
+  if (!response.ok || payload?.ok === false) {
+    const message =
+      typeof payload?.error === "string" && payload.error.trim()
+        ? payload.error.trim()
+        : `실 분석 서버 요청에 실패했습니다. (${response.status})`;
+    throw new Error(message);
   }
 
-  return await response.blob();
+  return payload;
 }
 
 function extractScoreValue(scoreText) {
@@ -336,13 +430,6 @@ function formatDelta(delta) {
   if (delta > 0) return `기준 대비 +${delta}p`;
   if (delta < 0) return `기준 대비 ${delta}p`;
   return "기준 대비 0p";
-}
-
-function getChunkPriority(index, seed) {
-  const priority = (seed + index) % 3;
-  if (priority === 0) return "high";
-  if (priority === 1) return "medium";
-  return "low";
 }
 
 function getChunkPriorityLabel(priority) {
@@ -516,6 +603,14 @@ function toggleListPreview(listNode, toggleButton) {
 
 function renderChunks(chunks) {
   clearChildren(chunkList);
+  if (!Array.isArray(chunks) || !chunks.length) {
+    const emptyText = document.createElement("p");
+    emptyText.className = "empty";
+    emptyText.textContent = "chunk 분석 결과가 없습니다.";
+    chunkList.appendChild(emptyText);
+    return;
+  }
+
   chunks.forEach((chunk) => {
     const wrapper = document.createElement("div");
     const head = document.createElement("div");
@@ -638,123 +733,24 @@ function setSummaryValues(data) {
   setHeroPreview(data.overall.score, data.weaknesses || []);
 }
 
-function buildAnalysisData(formValues, file) {
-  const seedBase =
-    formValues.course_id.length +
-    formValues.course_name.length +
-    formValues.subject.length +
-    formValues.instructor.length +
-    formValues.sub_instructor.length;
-  const seed = seedBase + (file ? Math.round(file.size / 1024) : 12);
-
-  const structureScore = computeScore(seed, 3);
-  const deliveryScore = computeScore(seed, 5);
-  const interactionScore = computeScore(seed, 7);
-  const conceptScore = clampScore(Math.round((structureScore + deliveryScore) / 2));
-  const practiceScore = clampScore(Math.round((deliveryScore + interactionScore) / 2) - 2);
-  const overallScoreValue = Math.round(
-    (structureScore + deliveryScore + interactionScore + conceptScore + practiceScore) / 5
-  );
-
-  const strengths = [
-    "강의 시작에서 목표를 분명하게 안내해 학습 방향이 선명합니다.",
-    "개념 설명 순서가 안정적이라 초반 이해 부담이 낮습니다.",
-    "예시 제시 후 핵심 개념을 다시 정리해 기억 고정에 유리합니다.",
-    "질문 유도 멘트가 적절히 배치되어 참여를 끌어냅니다.",
-    "마무리 요약에서 다음 학습 포인트를 분명히 연결합니다.",
-  ];
-
-  const weaknesses = [
-    "중반부 일부 구간에서 반복 표현이 늘어 전달 밀도가 떨어집니다.",
-    "난이도 전환 시 사전지식 확인이 부족해 이탈 위험이 있습니다.",
-    "실습 안내가 텍스트 중심이라 따라가기 어려운 순간이 있습니다.",
-    "핵심 개념 대비 예시 비중이 순간적으로 과해 초점이 흐려집니다.",
-    "마지막 질의응답에서 요점 회수가 부족해 정리감이 약해집니다.",
-  ];
-
-  const evidence = [
-    {
-      item: "learning_objective_intro",
-      quote: "오늘은 데코레이터 패턴과 옵저버 패턴을 배워보겠습니다.",
-      reason: "강의 시작에서 학습 목표를 명확히 제시함",
-    },
-    {
-      item: "explanation_sequence",
-      quote: "먼저 개념을 정리하고, 바로 코드 예제로 확인해볼게요.",
-      reason: "설명 순서가 개념에서 실습으로 자연스럽게 이어짐",
-    },
-    {
-      item: "prerequisite_check",
-      quote: "이 부분은 이벤트 루프를 이미 이해하고 있다는 전제로 진행합니다.",
-      reason: "사전지식 전제가 있으나 확인 질문이 없어 일부 학습자 이탈 가능",
-    },
-    {
-      item: "practice_transition",
-      quote: "이제 방금 본 패턴을 실습 코드에 그대로 적용해봅시다.",
-      reason: "개념 설명 뒤 실습으로 빠르게 전환해 적용 흐름을 강화함",
-    },
-    {
-      item: "closing_summary",
-      quote: "정리하면, 오늘은 상태 변화와 구독 구조를 연결하는 법을 봤습니다.",
-      reason: "종료 구간에서 학습 포인트를 압축해 재강조함",
-    },
-  ];
-
-  return {
-    ...formValues,
-    overall: {
-      score: overallScoreValue,
-      level: getScoreLevel(overallScoreValue),
-      delta: overallScoreValue - 78,
-    },
-    scores: {
-      structure: `${structureScore}점`,
-      delivery: `${deliveryScore}점`,
-      interaction: `${interactionScore}점`,
-      concept: `${conceptScore}점`,
-      practice: `${practiceScore}점`,
-    },
-    strengths,
-    weaknesses,
-    evidence,
-    metrics: {
-      repeat: `${(seed % 6) + 3}회`,
-      complete: `${computeScore(seed, 2)}%`,
-      speed: `${(seed % 40) + 120} WPM`,
-      question: `${(seed % 5) + 4}개`,
-    },
-    llm: {
-      structure: "목표-전개-정리 구성이 선명합니다.",
-      concept: "핵심 용어 정의가 일관됩니다.",
-      practice: "실습 안내가 명료합니다.",
-      interaction: "질문 타이밍이 효과적입니다.",
-    },
-    chunks: Array.from({ length: 3 }).map((_, index) => ({
-      title: `Chunk ${index + 1}`,
-      priority: getChunkPriority(index, seed),
-      summary:
-        index % 2 === 0
-          ? "요점 정리와 예시가 연결되어 있습니다."
-          : "전개는 안정적이지만 문장 반복이 관찰됩니다.",
-    })),
-  };
+function stopProgressLoop() {
+  if (timerId) {
+    window.clearInterval(timerId);
+    timerId = null;
+  }
 }
 
-function getFormValues() {
-  const formData = new FormData(form);
-  return {
-    course_id: formData.get("course_id")?.toString().trim() || "-",
-    course_name: formData.get("course_name")?.toString().trim() || "-",
-    date: formData.get("date")?.toString().trim() || "-",
-    time: formData.get("time")?.toString().trim() || "-",
-    subject: formData.get("subject")?.toString().trim() || "-",
-    content: formData.get("content")?.toString().trim() || "-",
-    instructor: formData.get("instructor")?.toString().trim() || "-",
-    sub_instructor: formData.get("sub_instructor")?.toString().trim() || "-",
-  };
+function startProgressLoop() {
+  stopProgressLoop();
+  let index = 0;
+  setActiveStep(index);
+  timerId = window.setInterval(() => {
+    index = Math.min(index + 1, steps.length - 1);
+    setActiveStep(index);
+  }, 1500);
 }
 
-function startAnalysis() {
+async function startAnalysis() {
   if (isRunning) return;
   if (!form.checkValidity()) {
     form.reportValidity();
@@ -773,50 +769,36 @@ function startAnalysis() {
   startButton.textContent = "분석 중…";
   startButton.disabled = true;
 
-  let index = 0;
-  setActiveStep(index);
+  startProgressLoop();
 
-  timerId = window.setInterval(() => {
-    index += 1;
-    if (index >= steps.length) {
-      window.clearInterval(timerId);
-      void finishAnalysis();
-      return;
-    }
-    setActiveStep(index);
-  }, 1100);
-}
-
-async function finishAnalysis() {
-  isRunning = false;
-  startButton.textContent = "다시 분석";
-  startButton.disabled = false;
-  progressBar.style.width = "100%";
-  setRunState("done", "분석 완료");
-
-  const fileInput = document.getElementById("script-file");
-  const file = fileInput.files[0] || null;
-  const formValues = getFormValues();
-  const analysisData = buildAnalysisData(formValues, file);
-
-  summaryGrid.setAttribute("data-ready", "true");
-  summaryOverview.setAttribute("data-ready", "true");
-  setSummaryValues(analysisData);
-
-  const jsonBlob = new Blob([JSON.stringify(analysisData, null, 2)], {
-    type: "application/json",
-  });
-  let pdfBlob;
   try {
-    pdfBlob = await createPdfBlob(analysisData);
+    const payload = await requestAnalysis();
+    const analysisData = normalizeServerAnalysis(payload);
+
+    stopProgressLoop();
+    setActiveStep(steps.length - 1);
+    progressBar.style.width = "100%";
+    summaryGrid.setAttribute("data-ready", "true");
+    summaryOverview.setAttribute("data-ready", "true");
+    setSummaryValues(analysisData);
+    enableDownloads(payload.downloads);
+    setRunState("done", "분석 완료");
+    showToast("실 분석 결과와 다운로드가 준비되었습니다.");
   } catch (error) {
     console.error(error);
-    pdfBlob = createFallbackPdfBlob();
-    showToast("PDF API 연결에 실패해 기본 PDF로 대체했습니다.");
+    stopProgressLoop();
+    setRunState(
+      "error",
+      error instanceof Error ? error.message : "분석 중 오류가 발생했습니다."
+    );
+    showToast(
+      error instanceof Error ? error.message : "실 분석 서버 연결에 실패했습니다."
+    );
+  } finally {
+    isRunning = false;
+    startButton.textContent = "다시 분석";
+    startButton.disabled = false;
   }
-
-  enableDownloads(pdfBlob, jsonBlob);
-  showToast("분석이 완료되어 다운로드가 활성화되었습니다.");
 }
 
 if (scrollButtons.length) {
