@@ -1,26 +1,32 @@
 """도메인과 인프라를 연결하는 포트(인터페이스) 정의."""
+
 import abc
-from typing import List, Optional
-from core.schemas import ChunkMetadata, ChunkResult
+from typing import List, Tuple
+
+from LLMEngine.core.schemas import ChunkMetadata, ChunkResult, ChunkStateRecord, TokenUsage
+
 
 class ILLMProvider(abc.ABC):
+    @property
     @abc.abstractmethod
-    def analyze_chunk(self, chunk: ChunkMetadata) -> ChunkResult:
-        pass
-    
+    def model_name(self) -> str:
+        """현재 사용 중인 LLM 모델 식별자."""
+
     @abc.abstractmethod
-    async def analyze_chunk_async(self, chunk: ChunkMetadata) -> ChunkResult:
-        pass
-        
+    def analyze_chunk(self, chunk: ChunkMetadata) -> ChunkResult: ...
+
     @abc.abstractmethod
-    def aggregate_results(self, items: List[str], label: str, scores_context: str, trends: str) -> List[str]:
-        pass
+    async def analyze_chunk_async(self, chunk: ChunkMetadata) -> ChunkResult: ...
+
+    @abc.abstractmethod
+    def aggregate_results(
+        self, items: List[str], label: str, scores_context: str, trends: str,
+    ) -> Tuple[List[str], TokenUsage]: ...
+
 
 class IRepository(abc.ABC):
     @abc.abstractmethod
-    def save_chunk_state(self, lecture_id: str, chunk_id: int, status: str, result: Optional[ChunkResult] = None) -> None:
-        pass
-        
+    def save_chunk_state(self, record: ChunkStateRecord) -> None: ...
+
     @abc.abstractmethod
-    def get_completed_chunks(self, lecture_id: str) -> List[ChunkResult]:
-        pass
+    def get_completed_chunks(self, lecture_id: str) -> List[ChunkResult]: ...

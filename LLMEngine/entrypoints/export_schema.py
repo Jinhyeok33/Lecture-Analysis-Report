@@ -1,24 +1,28 @@
-# entrypoints/export_schema.py
+"""JSON Schema 계약서 내보내기."""
 
 import json
+import logging
 from pathlib import Path
-# 실제 최종 출력물인 ChunkResult와 AggregatedResult를 사용하여 스펙 확정
-from core.schemas import ChunkResult, AggregatedResult
 
-def export():
-    # 프로젝트 루트의 contracts 폴더에 저장
-    out = Path("./contracts")
+from LLMEngine.core.schemas import ChunkResult, AggregatedResult
+
+logger = logging.getLogger(__name__)
+
+
+def export(output_dir: str | Path = "./contracts") -> Path:
+    out = Path(output_dir)
     out.mkdir(exist_ok=True)
-    
-    # 1. 개별 청크 결과 명세서 (ID, 시간 포함)
+
     with (out / "ChunkResult_Schema.json").open("w", encoding="utf-8") as f:
         json.dump(ChunkResult.model_json_schema(), f, ensure_ascii=False, indent=2)
-        
-    # 2. 최종 통합 리포트 결과 명세서
+
     with (out / "AggregatedResult_Schema.json").open("w", encoding="utf-8") as f:
         json.dump(AggregatedResult.model_json_schema(), f, ensure_ascii=False, indent=2)
-        
-    print(f"Contract 배포 완료: {out.absolute()}")
+
+    logger.info("stage=export_schema path=%s Contract 배포 완료", out.absolute())
+    return out
+
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     export()
