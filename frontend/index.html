@@ -87,11 +87,11 @@
             <div class="hero-radar" aria-hidden="true">
               <div class="hero-radar__shape"></div>
               <ul>
-                <li>구조</li>
-                <li>전달력</li>
+                <li>언어 표현</li>
+                <li>도입/구조</li>
+                <li>개념 설명</li>
+                <li>예시/실습</li>
                 <li>상호작용</li>
-                <li>예시</li>
-                <li>명확성</li>
               </ul>
             </div>
           </div>
@@ -121,7 +121,7 @@
           <li class="workflow-card">
             <p class="workflow-card__step">2</p>
             <h3>NLP/LLM 분석</h3>
-            <p>구조, 전달력, 상호작용 등 핵심 지표를 분석합니다.</p>
+            <p>언어 표현 품질부터 수강생 상호작용까지 5대 기준을 분석합니다.</p>
           </li>
           <li class="workflow-card">
             <p class="workflow-card__step">3</p>
@@ -339,16 +339,7 @@
             <div class="score-grid" id="score-grid">
               <div class="score-item">
                 <div class="score-item__head">
-                  <span>구조</span>
-                  <strong id="score-structure">?</strong>
-                </div>
-                <div class="score-meter" role="presentation">
-                  <span class="score-meter__fill" id="meter-structure"></span>
-                </div>
-              </div>
-              <div class="score-item">
-                <div class="score-item__head">
-                  <span>전달력</span>
+                  <span>언어 표현 품질</span>
                   <strong id="score-delivery">?</strong>
                 </div>
                 <div class="score-meter" role="presentation">
@@ -357,16 +348,16 @@
               </div>
               <div class="score-item">
                 <div class="score-item__head">
-                  <span>상호작용</span>
-                  <strong id="score-interaction">?</strong>
+                  <span>강의 도입 및 구조</span>
+                  <strong id="score-structure">?</strong>
                 </div>
                 <div class="score-meter" role="presentation">
-                  <span class="score-meter__fill" id="meter-interaction"></span>
+                  <span class="score-meter__fill" id="meter-structure"></span>
                 </div>
               </div>
               <div class="score-item">
                 <div class="score-item__head">
-                  <span>개념 명확성</span>
+                  <span>개념 설명 명확성</span>
                   <strong id="score-concept">?</strong>
                 </div>
                 <div class="score-meter" role="presentation">
@@ -375,11 +366,20 @@
               </div>
               <div class="score-item">
                 <div class="score-item__head">
-                  <span>실습 연계</span>
+                  <span>예시 및 실습 연계</span>
                   <strong id="score-practice">?</strong>
                 </div>
                 <div class="score-meter" role="presentation">
                   <span class="score-meter__fill" id="meter-practice"></span>
+                </div>
+              </div>
+              <div class="score-item">
+                <div class="score-item__head">
+                  <span>수강생 상호작용</span>
+                  <strong id="score-interaction">?</strong>
+                </div>
+                <div class="score-meter" role="presentation">
+                  <span class="score-meter__fill" id="meter-interaction"></span>
                 </div>
               </div>
             </div>
@@ -422,60 +422,48 @@
       <section id="detail" class="section">
         <div class="section-header">
           <h2>상세 분석 영역</h2>
-          <p>토글을 열어 세부 지표와 chunk별 결과를 확인하세요.</p>
+          <p>강의 품질 기준서의 5개 카테고리로 세부 평가를 확인하세요.</p>
         </div>
-
-        <div class="accordion">
-          <details open>
-            <summary>NLP 지표</summary>
-            <div class="detail-grid">
-              <div>
-                <span>반복 표현</span>
-                <strong id="metric-repeat">?</strong>
-              </div>
-              <div>
-                <span>발화 완결성</span>
-                <strong id="metric-complete">?</strong>
-              </div>
-              <div>
-                <span>발화 속도</span>
-                <strong id="metric-speed">?</strong>
-              </div>
-              <div>
-                <span>이해 확인 질문 수</span>
-                <strong id="metric-question">?</strong>
-              </div>
+        <div class="detail-grid detail-grid--categories">
+          <div class="summary-card detail-card detail-card--category">
+            <div class="summary-card__head detail-card__head">
+              <h3>1. 언어 표현 품질</h3>
+              <strong class="detail-category-summary" id="detail-language-summary">?</strong>
             </div>
-          </details>
+            <div class="detail-subscore-list" id="detail-language-items"></div>
+          </div>
 
-          <details>
-            <summary>LLM 평가</summary>
-            <div class="detail-grid">
-              <div>
-                <span>강의 구조</span>
-                <strong id="llm-structure">?</strong>
-              </div>
-              <div>
-                <span>개념 설명</span>
-                <strong id="llm-concept">?</strong>
-              </div>
-              <div>
-                <span>예시/실습 연계</span>
-                <strong id="llm-practice">?</strong>
-              </div>
-              <div>
-                <span>상호작용</span>
-                <strong id="llm-interaction">?</strong>
-              </div>
+          <div class="summary-card detail-card detail-card--category">
+            <div class="summary-card__head detail-card__head">
+              <h3>2. 강의 도입 및 구조</h3>
+              <strong class="detail-category-summary" id="detail-structure-summary">?</strong>
             </div>
-          </details>
+            <div class="detail-subscore-list" id="detail-structure-items"></div>
+          </div>
 
-          <details>
-            <summary>chunk별 분석 결과</summary>
-            <div class="chunk-list" id="chunk-list">
-              <p class="empty">분석 완료 후 표시됩니다.</p>
+          <div class="summary-card detail-card detail-card--category">
+            <div class="summary-card__head detail-card__head">
+              <h3>3. 개념 설명 명확성</h3>
+              <strong class="detail-category-summary" id="detail-concept-summary">?</strong>
             </div>
-          </details>
+            <div class="detail-subscore-list" id="detail-concept-items"></div>
+          </div>
+
+          <div class="summary-card detail-card detail-card--category">
+            <div class="summary-card__head detail-card__head">
+              <h3>4. 예시 및 실습 연계</h3>
+              <strong class="detail-category-summary" id="detail-practice-summary">?</strong>
+            </div>
+            <div class="detail-subscore-list" id="detail-practice-items"></div>
+          </div>
+
+          <div class="summary-card detail-card detail-card--category">
+            <div class="summary-card__head detail-card__head">
+              <h3>5. 수강생 상호작용</h3>
+              <strong class="detail-category-summary" id="detail-interaction-summary">?</strong>
+            </div>
+            <div class="detail-subscore-list" id="detail-interaction-items"></div>
+          </div>
         </div>
       </section>
 

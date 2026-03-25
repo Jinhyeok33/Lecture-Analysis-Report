@@ -26,7 +26,6 @@ const evidenceList = document.getElementById("evidence-list");
 const strengthMore = document.getElementById("strength-more");
 const weaknessMore = document.getElementById("weakness-more");
 const evidenceMore = document.getElementById("evidence-more");
-const chunkList = document.getElementById("chunk-list");
 const downloadPdf = document.getElementById("download-pdf");
 const downloadJson = document.getElementById("download-json");
 const scrollButtons = Array.from(document.querySelectorAll("[data-scroll]"));
@@ -38,14 +37,16 @@ const heroTop1 = document.getElementById("hero-top-1");
 const heroTop2 = document.getElementById("hero-top-2");
 const heroTop3 = document.getElementById("hero-top-3");
 
-const metricRepeat = document.getElementById("metric-repeat");
-const metricComplete = document.getElementById("metric-complete");
-const metricSpeed = document.getElementById("metric-speed");
-const metricQuestion = document.getElementById("metric-question");
-const llmStructure = document.getElementById("llm-structure");
-const llmConcept = document.getElementById("llm-concept");
-const llmPractice = document.getElementById("llm-practice");
-const llmInteraction = document.getElementById("llm-interaction");
+const detailLanguageSummary = document.getElementById("detail-language-summary");
+const detailStructureSummary = document.getElementById("detail-structure-summary");
+const detailConceptSummary = document.getElementById("detail-concept-summary");
+const detailPracticeSummary = document.getElementById("detail-practice-summary");
+const detailInteractionSummary = document.getElementById("detail-interaction-summary");
+const detailLanguageItems = document.getElementById("detail-language-items");
+const detailStructureItems = document.getElementById("detail-structure-items");
+const detailConceptItems = document.getElementById("detail-concept-items");
+const detailPracticeItems = document.getElementById("detail-practice-items");
+const detailInteractionItems = document.getElementById("detail-interaction-items");
 
 const steps = [
   "전처리 중",
@@ -63,19 +64,19 @@ let toastTimer = null;
 
 const SUMMARY_PREVIEW_COUNT = 3;
 const EVIDENCE_ITEM_LABELS = {
-  learning_objective_intro: "학습 목표 제시",
-  previous_lesson_linkage: "이전 학습 연계",
+  learning_objective_intro: "학습 목표 안내",
+  previous_lesson_linkage: "전날 복습 연계",
   explanation_sequence: "설명 순서",
-  key_point_emphasis: "핵심 강조",
+  key_point_emphasis: "핵심 내용 강조",
   closing_summary: "마무리 요약",
   concept_definition: "개념 정의",
-  analogy_example_usage: "비유/예시 활용",
-  prerequisite_check: "사전 지식 점검",
+  analogy_example_usage: "비유 및 예시 활용",
+  prerequisite_check: "선행 개념 확인",
   example_appropriateness: "예시 적절성",
-  practice_transition: "실습 전환",
+  practice_transition: "실습 연계",
   error_handling: "오류 대응",
   participation_induction: "참여 유도",
-  question_response_sufficiency: "질문 응답 충실도",
+  question_response_sufficiency: "질문 응답 충분성",
 };
 
 function setActiveStep(index) {
@@ -222,27 +223,65 @@ function formatScoreText(score) {
   return `${clampPercent(score)}점`;
 }
 
-function describeDimension(type, score) {
+function describeCategorySummary(type, score) {
   switch (type) {
+    case "language":
+      if (score >= 80) return "언어 표현 품질이 안정적입니다.";
+      if (score >= 60) return "표현 품질 관리가 필요합니다.";
+      return "언어 표현 보강이 필요합니다.";
     case "structure":
-      if (score >= 80) return "목표-전개-정리 흐름이 안정적입니다.";
-      if (score >= 60) return "구조는 유지되지만 핵심 강조 보강이 필요합니다.";
-      return "도입과 마무리 구조 보강이 필요합니다.";
+      if (score >= 80) return "강의 도입 및 구조가 안정적입니다.";
+      if (score >= 60) return "강의 도입 및 구조 보강이 필요합니다.";
+      return "강의 도입 및 구조 개선이 필요합니다.";
     case "concept":
-      if (score >= 80) return "핵심 개념 정의가 명확합니다.";
-      if (score >= 60) return "개념 설명은 가능하지만 예시 보강이 필요합니다.";
-      return "개념 정의와 비유 설명 보강이 필요합니다.";
+      if (score >= 80) return "개념 설명 명확성이 우수합니다.";
+      if (score >= 60) return "개념 설명 명확성 보강이 필요합니다.";
+      return "개념 설명 명확성 개선이 필요합니다.";
     case "practice":
-      if (score >= 80) return "예시와 실습 연결이 자연스럽습니다.";
-      if (score >= 60) return "실습 전환은 되지만 단계 안내를 더 보강해야 합니다.";
-      return "예시 제시와 실습 연결 흐름 개선이 필요합니다.";
+      if (score >= 80) return "예시 및 실습 연계가 자연스럽습니다.";
+      if (score >= 60) return "예시 및 실습 연계 보강이 필요합니다.";
+      return "예시 및 실습 연계 개선이 필요합니다.";
     case "interaction":
-      if (score >= 80) return "참여 유도와 응답 흐름이 좋습니다.";
-      if (score >= 60) return "질문은 있으나 상호작용 밀도를 더 높일 수 있습니다.";
-      return "이해 확인 질문과 응답 밀도 보강이 필요합니다.";
+      if (score >= 80) return "수강생 상호작용이 원활합니다.";
+      if (score >= 60) return "수강생 상호작용 보강이 필요합니다.";
+      return "수강생 상호작용 개선이 필요합니다.";
     default:
       return "-";
   }
+}
+
+function calculateRepeatExpressionScore(languageQuality = {}) {
+  const repeatRatio = Number(languageQuality.repeat_ratio);
+  if (!Number.isFinite(repeatRatio)) return null;
+  return clampPercent((1 - clampUnit(repeatRatio / 0.35)) * 100);
+}
+
+function calculateCompletenessScore(languageQuality = {}) {
+  const incompleteRatio = Number(languageQuality.incomplete_sentence_ratio);
+  if (!Number.isFinite(incompleteRatio)) return null;
+  return clampPercent((1 - clampUnit(incompleteRatio)) * 100);
+}
+
+function calculateLanguageConsistencyScore(languageQuality = {}) {
+  const styleRatio = languageQuality.speech_style_ratio;
+  if (!styleRatio || typeof styleRatio !== "object") return null;
+  const values = Object.values(styleRatio).filter((value) => typeof value === "number" && Number.isFinite(value));
+  if (!values.length) return null;
+  return clampPercent(Math.max(...values) * 100);
+}
+
+function calculateSpeechRateScore(conceptClarityMetrics = {}) {
+  const speechRate = Number(conceptClarityMetrics.speech_rate_wpm);
+  if (!Number.isFinite(speechRate) || speechRate <= 0) return null;
+  if (speechRate >= 120 && speechRate <= 170) return 100;
+  if (speechRate < 120) return clampPercent(100 - (120 - speechRate) * 2);
+  return clampPercent(100 - (speechRate - 170) * 2);
+}
+
+function calculateQuestionAdequacyScore(interactionMetrics = {}) {
+  const questionCount = Number(interactionMetrics.understanding_question_count);
+  if (!Number.isFinite(questionCount) || questionCount < 0) return null;
+  return clampPercent(Math.min(questionCount / 8, 1) * 100);
 }
 
 function deriveDeliveryScore(languageQuality = {}, conceptClarityMetrics = {}) {
@@ -278,40 +317,108 @@ function formatQuestionMetric(interactionMetrics = {}) {
   return `${interactionMetrics.understanding_question_count}개`;
 }
 
-function priorityFromScore(score) {
-  if (score < 60) return "high";
-  if (score < 75) return "medium";
-  return "low";
+function buildScoreEntry(label, score) {
+  if (typeof score !== "number" || !Number.isFinite(score)) {
+    return { label, value: "-" };
+  }
+  return { label, value: formatScoreText(score) };
 }
 
-function normalizeChunks(chunks) {
-  if (!Array.isArray(chunks)) return [];
+function averageEntryScores(entries) {
+  return averageNumbers(
+    entries
+      .map((entry) => {
+        const parsed = Number.parseInt(entry?.value, 10);
+        return Number.isFinite(parsed) ? parsed : null;
+      })
+      .filter((value) => typeof value === "number"),
+    0
+  );
+}
 
-  return chunks.map((chunk, index) => {
-    const scoreGroups = Object.values(chunk?.scores || {}).flatMap((group) => numericValues(group));
-    const chunkScore = fivePointToPercent(averageNumbers(scoreGroups, 0));
-    const issue = firstNonEmpty(chunk?.issues, "");
-    const strength = firstNonEmpty(chunk?.strengths, "");
-    const evidence = Array.isArray(chunk?.evidence)
-      ? chunk.evidence.find((entry) => entry && typeof entry.reason === "string" && entry.reason.trim())
-      : null;
-    const summary =
-      issue ||
-      strength ||
-      sanitizeText(evidence?.reason, "") ||
-      "세부 분석 결과를 확인하세요.";
-    const timeRange = [sanitizeText(chunk?.start_time, ""), sanitizeText(chunk?.end_time, "")]
-      .filter(Boolean)
-      .join(" - ");
+function buildDetailBreakdown(scoreGroup = {}) {
+  const entries = Object.entries(scoreGroup).filter(
+    ([, value]) => typeof value === "number" && Number.isFinite(value)
+  );
 
-    return {
-      title: timeRange
-        ? `Chunk ${chunk?.chunk_id || index + 1} (${timeRange})`
-        : `Chunk ${chunk?.chunk_id || index + 1}`,
-      priority: priorityFromScore(chunkScore),
-      summary,
-    };
+  if (!entries.length) return [];
+
+  return entries
+    .map(([key, value]) => {
+      const label = EVIDENCE_ITEM_LABELS[key] || key;
+      return {
+        label,
+        value: formatScoreText(fivePointToPercent(value)),
+      };
+    });
+}
+
+function renderDetailBreakdown(container, entries = []) {
+  clearChildren(container);
+
+  if (!Array.isArray(entries) || !entries.length) {
+    const empty = document.createElement("div");
+    const label = document.createElement("span");
+    const value = document.createElement("span");
+    empty.className = "detail-subscore-row is-empty";
+    label.textContent = "세부 점수";
+    value.textContent = "-";
+    empty.append(label, value);
+    container.appendChild(empty);
+    return;
+  }
+
+  entries.forEach((entry) => {
+    const row = document.createElement("div");
+    const label = document.createElement("span");
+    const value = document.createElement("span");
+    row.className = "detail-subscore-row";
+    label.textContent = entry.label;
+    value.textContent = entry.value;
+    row.append(label, value);
+    container.appendChild(row);
   });
+}
+
+function buildDetailCategories(analysis = {}) {
+  const languageEntries = [
+    buildScoreEntry("불필요한 반복 표현", calculateRepeatExpressionScore(analysis.language_quality)),
+    buildScoreEntry("발화 완결성", calculateCompletenessScore(analysis.language_quality)),
+    buildScoreEntry("언어 일관성", calculateLanguageConsistencyScore(analysis.language_quality)),
+  ];
+  const structureEntries = buildDetailBreakdown(analysis.summary_scores?.lecture_structure);
+  const conceptEntries = [
+    ...buildDetailBreakdown(analysis.summary_scores?.concept_clarity),
+    buildScoreEntry("발화 속도 적절성", calculateSpeechRateScore(analysis.concept_clarity_metrics)),
+  ];
+  const practiceEntries = buildDetailBreakdown(analysis.summary_scores?.practice_linkage);
+  const interactionEntries = [
+    buildScoreEntry("이해 확인 질문", calculateQuestionAdequacyScore(analysis.interaction_metrics)),
+    ...buildDetailBreakdown(analysis.summary_scores?.interaction),
+  ];
+
+  return {
+    language: {
+      summary: describeCategorySummary("language", averageEntryScores(languageEntries)),
+      details: languageEntries,
+    },
+    structure: {
+      summary: describeCategorySummary("structure", averageEntryScores(structureEntries)),
+      details: structureEntries,
+    },
+    concept: {
+      summary: describeCategorySummary("concept", averageEntryScores(conceptEntries)),
+      details: conceptEntries,
+    },
+    practice: {
+      summary: describeCategorySummary("practice", averageEntryScores(practiceEntries)),
+      details: practiceEntries,
+    },
+    interaction: {
+      summary: describeCategorySummary("interaction", averageEntryScores(interactionEntries)),
+      details: interactionEntries,
+    },
+  };
 }
 
 function normalizeServerAnalysis(payload) {
@@ -329,6 +436,7 @@ function normalizeServerAnalysis(payload) {
     analysis.language_quality,
     analysis.concept_clarity_metrics
   );
+  const detailCategories = buildDetailCategories(analysis);
   const overallScoreValue = clampPercent(
     averageNumbers(
       [structureScore, deliveryScore, interactionScore, conceptScore, practiceScore],
@@ -365,19 +473,7 @@ function normalizeServerAnalysis(payload) {
       ? analysis.overall_issues.filter((value) => typeof value === "string" && value.trim())
       : [],
     evidence: Array.isArray(analysis.overall_evidences) ? analysis.overall_evidences : [],
-    metrics: {
-      repeat: formatRepeatMetric(analysis.language_quality),
-      complete: formatCompletenessMetric(analysis.language_quality),
-      speed: formatSpeedMetric(analysis.concept_clarity_metrics),
-      question: formatQuestionMetric(analysis.interaction_metrics),
-    },
-    llm: {
-      structure: describeDimension("structure", structureScore),
-      concept: describeDimension("concept", conceptScore),
-      practice: describeDimension("practice", practiceScore),
-      interaction: describeDimension("interaction", interactionScore),
-    },
-    chunks: normalizeChunks(payload?.chunks),
+    detailCategories,
   };
 }
 
@@ -430,12 +526,6 @@ function formatDelta(delta) {
   if (delta > 0) return `기준 대비 +${delta}p`;
   if (delta < 0) return `기준 대비 ${delta}p`;
   return "기준 대비 0p";
-}
-
-function getChunkPriorityLabel(priority) {
-  if (priority === "high") return "HIGH";
-  if (priority === "medium") return "MEDIUM";
-  return "LOW";
 }
 
 function clearChildren(node) {
@@ -601,36 +691,6 @@ function toggleListPreview(listNode, toggleButton) {
   initializeListPreview(listNode, toggleButton);
 }
 
-function renderChunks(chunks) {
-  clearChildren(chunkList);
-  if (!Array.isArray(chunks) || !chunks.length) {
-    const emptyText = document.createElement("p");
-    emptyText.className = "empty";
-    emptyText.textContent = "chunk 분석 결과가 없습니다.";
-    chunkList.appendChild(emptyText);
-    return;
-  }
-
-  chunks.forEach((chunk) => {
-    const wrapper = document.createElement("div");
-    const head = document.createElement("div");
-    const title = document.createElement("strong");
-    const badge = document.createElement("span");
-    const summary = document.createElement("p");
-
-    wrapper.className = "chunk";
-    head.className = "chunk-head";
-    badge.className = `chunk-badge is-${chunk.priority}`;
-    title.textContent = chunk.title;
-    badge.textContent = getChunkPriorityLabel(chunk.priority);
-    summary.textContent = chunk.summary;
-
-    head.append(title, badge);
-    wrapper.append(head, summary);
-    chunkList.appendChild(wrapper);
-  });
-}
-
 function resetSummaryValues() {
   overallScore.textContent = "-";
   overallLevel.textContent = "분석 전";
@@ -665,20 +725,16 @@ function resetSummaryValues() {
   initializeListPreview(weaknessList, weaknessMore);
   initializeListPreview(evidenceList, evidenceMore);
 
-  metricRepeat.textContent = "?";
-  metricComplete.textContent = "?";
-  metricSpeed.textContent = "?";
-  metricQuestion.textContent = "?";
-  llmStructure.textContent = "?";
-  llmConcept.textContent = "?";
-  llmPractice.textContent = "?";
-  llmInteraction.textContent = "?";
-
-  clearChildren(chunkList);
-  const emptyText = document.createElement("p");
-  emptyText.className = "empty";
-  emptyText.textContent = "분석 완료 후 표시됩니다.";
-  chunkList.appendChild(emptyText);
+  detailLanguageSummary.textContent = "?";
+  detailStructureSummary.textContent = "?";
+  detailConceptSummary.textContent = "?";
+  detailPracticeSummary.textContent = "?";
+  detailInteractionSummary.textContent = "?";
+  renderDetailBreakdown(detailLanguageItems, []);
+  renderDetailBreakdown(detailStructureItems, []);
+  renderDetailBreakdown(detailConceptItems, []);
+  renderDetailBreakdown(detailPracticeItems, []);
+  renderDetailBreakdown(detailInteractionItems, []);
 
   setHeroPreview(null, []);
 }
@@ -719,17 +775,16 @@ function setSummaryValues(data) {
   initializeListPreview(weaknessList, weaknessMore);
   initializeListPreview(evidenceList, evidenceMore);
 
-  metricRepeat.textContent = data.metrics.repeat;
-  metricComplete.textContent = data.metrics.complete;
-  metricSpeed.textContent = data.metrics.speed;
-  metricQuestion.textContent = data.metrics.question;
-
-  llmStructure.textContent = data.llm.structure;
-  llmConcept.textContent = data.llm.concept;
-  llmPractice.textContent = data.llm.practice;
-  llmInteraction.textContent = data.llm.interaction;
-
-  renderChunks(data.chunks);
+  detailLanguageSummary.textContent = data.detailCategories.language.summary;
+  detailStructureSummary.textContent = data.detailCategories.structure.summary;
+  detailConceptSummary.textContent = data.detailCategories.concept.summary;
+  detailPracticeSummary.textContent = data.detailCategories.practice.summary;
+  detailInteractionSummary.textContent = data.detailCategories.interaction.summary;
+  renderDetailBreakdown(detailLanguageItems, data.detailCategories.language.details);
+  renderDetailBreakdown(detailStructureItems, data.detailCategories.structure.details);
+  renderDetailBreakdown(detailConceptItems, data.detailCategories.concept.details);
+  renderDetailBreakdown(detailPracticeItems, data.detailCategories.practice.details);
+  renderDetailBreakdown(detailInteractionItems, data.detailCategories.interaction.details);
   setHeroPreview(data.overall.score, data.weaknesses || []);
 }
 
