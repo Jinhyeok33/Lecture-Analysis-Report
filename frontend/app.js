@@ -49,18 +49,17 @@ const detailPracticeItems = document.getElementById("detail-practice-items");
 const detailInteractionItems = document.getElementById("detail-interaction-items");
 
 const steps = [
-  "전처리 중",
-  "청킹 중",
   "NLP 분석 중",
   "LLM 분석 중",
+  "통합 중",
   "리포트 생성 중",
 ];
 
 let isRunning = false;
-let timerId = null;
 let pdfUrl = null;
 let jsonUrl = null;
 let toastTimer = null;
+const JOB_POLL_INTERVAL_MS = 1200;
 
 const SUMMARY_PREVIEW_COUNT = 3;
 const EVIDENCE_ITEM_LABELS = {
@@ -505,6 +504,92 @@ async function requestAnalysis() {
   return payload;
 }
 
+async function requestAnalysisStatus(jobId) {
+  const response = await fetch(`/api/analyze/status?job_id=${encodeURIComponent(jobId)}`, {
+    cache: "no-store",
+  });
+  const payload = await readJsonResponse(response);
+
+  if (!response.ok || payload?.ok === false) {
+    const message =
+      typeof payload?.error === "string" && payload.error.trim()
+        ? payload.error.trim()
+        : `분석 상태 조회에 실패했습니다. (${response.status})`;
+    throw new Error(message);
+  }
+
+  return payload;
+}
+
+function getStatusStepIndex(status) {
+  const directIndex = Number(status?.step_index);
+  if (Number.isInteger(directIndex) && directIndex >= 0) {
+    return Math.min(directIndex, steps.length - 1);
+  }
+
+  switch (status?.stage) {
+    case "nlp":
+      return 0;
+    case "llm":
+      return 1;
+    case "integrate":
+      return 2;
+    case "report":
+    case "done":
+      return steps.length - 1;
+    default:
+      return null;
+  }
+}
+
+function clearActiveStep() {
+  statusList.forEach((item) => item.classList.remove("is-active"));
+  progressBar.style.width = "0%";
+}
+
+function applyAnalysisStatus(status) {
+  const nextStepIndex = getStatusStepIndex(status);
+  if (typeof nextStepIndex === "number") {
+    setActiveStep(nextStepIndex);
+  }
+
+  const message =
+    typeof status?.message === "string" && status.message.trim() ? status.message.trim() : "분석 중…";
+
+  if (status?.state === "queued" || status?.state === "running") {
+    setRunState("running", message);
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+async function waitForAnalysisResult(jobId) {
+  while (true) {
+    const status = await requestAnalysisStatus(jobId);
+    applyAnalysisStatus(status);
+
+    if (status?.state === "done") {
+      return status?.result || {};
+    }
+
+    if (status?.state === "error") {
+      const message =
+        typeof status?.error === "string" && status.error.trim()
+          ? status.error.trim()
+          : typeof status?.message === "string" && status.message.trim()
+            ? status.message.trim()
+            : "분석 중 오류가 발생했습니다.";
+      throw new Error(message);
+    }
+
+    await sleep(JOB_POLL_INTERVAL_MS);
+  }
+}
+
 function extractScoreValue(scoreText) {
   const parsed = Number.parseInt(scoreText, 10);
   if (Number.isNaN(parsed)) return 0;
@@ -788,23 +873,6 @@ function setSummaryValues(data) {
   setHeroPreview(data.overall.score, data.weaknesses || []);
 }
 
-function stopProgressLoop() {
-  if (timerId) {
-    window.clearInterval(timerId);
-    timerId = null;
-  }
-}
-
-function startProgressLoop() {
-  stopProgressLoop();
-  let index = 0;
-  setActiveStep(index);
-  timerId = window.setInterval(() => {
-    index = Math.min(index + 1, steps.length - 1);
-    setActiveStep(index);
-  }, 1500);
-}
-
 async function startAnalysis() {
   if (isRunning) return;
   if (!form.checkValidity()) {
@@ -819,18 +887,18 @@ async function startAnalysis() {
   summaryGrid.setAttribute("data-ready", "false");
   summaryOverview.setAttribute("data-ready", "false");
   resetSummaryValues();
-  setRunState("running", "전처리 중…");
+  clearActiveStep();
+  setRunState("running", "분석 요청 준비 중…");
 
   startButton.textContent = "분석 중…";
   startButton.disabled = true;
 
-  startProgressLoop();
-
   try {
-    const payload = await requestAnalysis();
+    const job = await requestAnalysis();
+    applyAnalysisStatus(job);
+    const payload = await waitForAnalysisResult(job.job_id);
     const analysisData = normalizeServerAnalysis(payload);
 
-    stopProgressLoop();
     setActiveStep(steps.length - 1);
     progressBar.style.width = "100%";
     summaryGrid.setAttribute("data-ready", "true");
@@ -841,7 +909,6 @@ async function startAnalysis() {
     showToast("실 분석 결과와 다운로드가 준비되었습니다.");
   } catch (error) {
     console.error(error);
-    stopProgressLoop();
     setRunState(
       "error",
       error instanceof Error ? error.message : "분석 중 오류가 발생했습니다."
