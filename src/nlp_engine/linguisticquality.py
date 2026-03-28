@@ -14,11 +14,17 @@ class LanguageQualityAnalyzer:
         self.kiwi = kiwi
         
         # 1. 불필요한 중복 표현 사전 (Filler Words)
-        self.filler_words = [
+        # 1.1. 부사/접속사형 필러 (문맥에 따라 의미가 있으나 습관적으로 사용됨)
+        self.adverb_fillers = {
             "이제", "그래서", "그러니까", "근데", "그러면", "일단", "약간", "좀", 
-            "사실", "뭐", "그", "어", "음", "보시면", "보면", "아무튼", 
-            "어쨌든", "그래가지고", "뭐냐면", "뭐랄까"
-        ]
+            "사실", "아무튼", "어쨌든", "그래가지고", "말하자면"
+        }
+
+        # 1.2. 감탄사/관형사형 필러 (단어 자체보다 '품사'가 중요)
+        self.pure_fillers = {"뭐", "그", "어", "음", "저", "에"}
+        
+        # 1.3. 동사형 필러의 어간 (보시면 -> 보다, 뭐냐면 -> 뭐이다 등)
+        self.verb_filler_lemmas = {"보다", "보시", "뭐이다", "그러다"}
         
         # 2. 간소화된 종결어미 사전 (Kiwi EF 태그 기반)
         self.ENDING_DICT_SIMPLE = {
@@ -57,14 +63,32 @@ class LanguageQualityAnalyzer:
         
         detected_fillers = []
         for t in tokens:
-            # 1) 단어가 filler_words에 포함되는지 확인
-            if t.form in self.filler_words:
-                # 2) '어', '음', '그' 등이 '감탄사(IC)'로 쓰였을 때만 필러로 인정
-                if t.tag == 'IC':
+            # A) 감탄사(IC)는 무조건 필러로 인정 (그, 어, 음, 뭐...)
+            if t.tag == 'IC':
+                detected_fillers.append(t.form)
+            
+            # B) 관형사(MM)나 부사(MA*) 중 사전에 정의된 습관어
+            elif t.tag in ['MM', 'MAG', 'MAJ'] and t.form in self.adverb_fillers:
+                detected_fillers.append(t.form)
+            
+            # C) 동사(VV, VA) 중 '보시면', '보면' 등의 필러성 어구
+            # t.lemma(어간)를 사용하여 '보시면', '보시면은', '보면'을 모두 '보다'라는 단어의 원형으로 체크
+            elif t.tag.startswith('V') and t.lemma in self.verb_filler_lemmas:
+                # 단, '보다'가 진짜 'Watch'의 의미가 아닌 습관적 삽입구인 경우만.
+                if t.form in ["보시면", "보면", "보시면은"]:
                     detected_fillers.append(t.form)
-                # 3) '이제', '일단' 등 부사(MA) 성격의 단어는 그대로 카운트
-                elif t.tag.startswith('MA'):
-                    detected_fillers.append(t.form)
+            
+            # D) '뭐랄까', '뭐냐면' 같은 복합 필러 처리
+            elif t.form in ["뭐냐면", "뭐랄까"]:
+                detected_fillers.append(t.form)
+            
+            """
+            적용 결과 예시
+            이 코드를 적용하면 다음과 같은 문장에서 차이가 발생합니다:
+            "사실(NNG, 명사)을 확인하세요" → 수집 안 함 (전문 용어/정보로 간주)
+            "사실(MAG, 부사) 제가 말이죠" → 수집함 (필러로 간주)
+            "화면을 보시면(VV+어미)" → 수집함 (동사형 필러로 간주)
+            """
 
         filler_counts = dict(Counter(detected_fillers))
         total_filler_count = sum(filler_counts.values())
@@ -100,8 +124,8 @@ class LanguageQualityAnalyzer:
         
         # 최종 지표 계산
         completeness_ratio = complete_count / total_sentences
-        formal_ratio = round(formal_count / total_sentences, 2)
-        informal_ratio = round(informal_count / total_sentences, 2)
+        formal_ratio = round(formal_count / total_sentences, 4)
+        informal_ratio = round(informal_count / total_sentences, 4)
 
         # --- 4. 결과 통합 ---
         return {
@@ -112,7 +136,7 @@ class LanguageQualityAnalyzer:
                 "total_filler_count": total_filler_count,
                 "repeat_ratio": repeat_ratio,
                 "repeat_density": repeat_density,
-                "incomplete_sentence_ratio": round(1 - completeness_ratio, 2),
+                "incomplete_sentence_ratio": round(1 - completeness_ratio, 4),
                 "speech_style_ratio": {
                     "formal": formal_ratio,
                     "informal": informal_ratio
