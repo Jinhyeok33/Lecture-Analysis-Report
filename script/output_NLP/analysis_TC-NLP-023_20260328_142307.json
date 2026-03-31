@@ -1,0 +1,10 @@
+{
+  "lecture_id": "TC-NLP-023",
+  "language_quality": {},
+  "concept_clarity_metrics": {
+    "speech_rate_wpm": 0,
+    "classification": "very_low",
+    "score": 3
+  },
+  "interaction_metrics": {}
+}

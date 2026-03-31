@@ -1,0 +1,30 @@
+{
+  "lecture_id": "TC-NLP-018",
+  "language_quality": {
+    "repeat_expressions": {
+      "그래서": 1,
+      "자": 1,
+      "이제": 3
+    },
+    "total_sentences": 6,
+    "total_token_count": 123,
+    "total_filler_count": 5,
+    "repeat_ratio": 0.8333,
+    "repeat_density": 0.0407,
+    "incomplete_sentence_ratio": 0.167,
+    "speech_style_ratio": {
+      "formal": 0.5,
+      "informal": 0.333
+    }
+  },
+  "concept_clarity_metrics": {
+    "total_words": 59,
+    "effective_duration_sec": 14,
+    "speech_rate_wpm": 253,
+    "classification": "excessive",
+    "score": 2
+  },
+  "interaction_metrics": {
+    "understanding_question_count": 0
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "lecture_id": "TC-NLP-003",
+  "language_quality": {
+    "repeat_expressions": {
+      "그래서": 3,
+      "어쨌든": 2
+    },
+    "total_sentences": 5,
+    "total_token_count": 43,
+    "total_filler_count": 5,
+    "repeat_ratio": 1.0,
+    "repeat_density": 0.1163,
+    "incomplete_sentence_ratio": 0.6,
+    "speech_style_ratio": {
+      "formal": 0.2,
+      "informal": 0.2
+    }
+  },
+  "concept_clarity_metrics": {
+    "total_words": 22,
+    "effective_duration_sec": 17,
+    "speech_rate_wpm": 78,
+    "classification": "very_low",
+    "score": 3
+  },
+  "interaction_metrics": {
+    "understanding_question_count": 0
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "lecture_id": "TC-NLP-012",
+  "language_quality": {
+    "repeat_expressions": {
+      "이제": 1
+    },
+    "total_sentences": 4,
+    "total_filler_count": 1,
+    "repeat_ratio": 0.25,
+    "repeat_density": 0.0143,
+    "incomplete_sentence_ratio": 0.25,
+    "speech_style_ratio": {
+      "formal": 0.5,
+      "informal": 0.25
+    }
+  },
+  "concept_clarity_metrics": {
+    "speech_rate_wpm": 70,
+    "classification": "very_low",
+    "score": 3
+  },
+  "interaction_metrics": {
+    "understanding_question_count": 1
+  }
+}

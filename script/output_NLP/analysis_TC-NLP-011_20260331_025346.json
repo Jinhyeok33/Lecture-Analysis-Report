@@ -1,0 +1,28 @@
+{
+  "lecture_id": "TC-NLP-011",
+  "language_quality": {
+    "repeat_expressions": {
+      "자": 1
+    },
+    "total_sentences": 2,
+    "total_token_count": 29,
+    "total_filler_count": 1,
+    "repeat_ratio": 0.5,
+    "repeat_density": 0.0345,
+    "incomplete_sentence_ratio": 0.0,
+    "speech_style_ratio": {
+      "formal": 0.0,
+      "informal": 1.0
+    }
+  },
+  "concept_clarity_metrics": {
+    "total_words": 16,
+    "effective_duration_sec": 5,
+    "speech_rate_wpm": 192,
+    "classification": "very_high",
+    "score": 3
+  },
+  "interaction_metrics": {
+    "understanding_question_count": 0
+  }
+}

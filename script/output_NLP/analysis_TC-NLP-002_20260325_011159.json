@@ -1,0 +1,25 @@
+{
+  "lecture_id": "TC-NLP-002",
+  "language_quality": {
+    "repeat_expressions": {
+      "이제": 5 ok
+    },
+    "total_sentences": 5, ok
+    "total_filler_count": 5, ok
+    "repeat_ratio": 1.0, ok
+    "repeat_density": 0.0526, 5/40=0.125 앞단 TIMESTAMP&ID 전처리 필요
+    "incomplete_sentence_ratio": 0.8, 종결어미가 ~요 인 문장이 발화미완결문장으로 분류됨
+    "speech_style_ratio": {
+      "formal": 0.2,
+      "informal": 0.0
+    }
+  },
+  "concept_clarity_metrics": {
+    "speech_rate_wpm": 68,
+    "classification": "very_low",
+    "score": 3
+  },
+  "interaction_metrics": {
+    "understanding_question_count": 0 ok
+  }
+}

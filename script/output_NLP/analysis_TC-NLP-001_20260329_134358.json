@@ -1,0 +1,24 @@
+{
+  "lecture_id": "TC-NLP-001",
+  "language_quality": {
+    "repeat_expressions": {},
+    "total_sentences": 2,
+    "total_token_count": 42,
+    "total_filler_count": 0,
+    "repeat_ratio": 0.0,
+    "repeat_density": 0.0,
+    "incomplete_sentence_ratio": 0.0,
+    "speech_style_ratio": {
+      "formal": 1.0,
+      "informal": 0.0
+    }
+  },
+  "concept_clarity_metrics": {
+    "speech_rate_wpm": 240,
+    "classification": "excessive",
+    "score": 2
+  },
+  "interaction_metrics": {
+    "understanding_question_count": 0
+  }
+}

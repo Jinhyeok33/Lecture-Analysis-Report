@@ -1,0 +1,25 @@
+{
+  "lecture_id": "TC-NLP-013",
+  "language_quality": {
+    "repeat_expressions": {
+      "어": 1
+    },
+    "total_sentences": 3,
+    "total_filler_count": 1,
+    "repeat_ratio": 0.3333,
+    "repeat_density": 0.0185,
+    "incomplete_sentence_ratio": 0.33,
+    "speech_style_ratio": {
+      "formal": 0.67,
+      "informal": 0.0
+    }
+  },
+  "concept_clarity_metrics": {
+    "speech_rate_wpm": 75,
+    "classification": "very_low",
+    "score": 3
+  },
+  "interaction_metrics": {
+    "understanding_question_count": 0
+  }
+}

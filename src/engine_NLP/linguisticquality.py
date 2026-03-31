@@ -185,34 +185,32 @@ class LanguageQualityAnalyzer:
             has_yo = "" # 존댓말 보조사 '요'를 임시 저장할 변수
 
             for token in reversed(analysis_result):
-                if token.tag == 'EF': # 종결 어미 태그 탐색
-                    found_ef = token.form
+                # [수정 1] Kiwi가 반환하는 특수 종성 자모(ᆸ, ᆯ, ᆫ)를 일반 호환 자모(ㅂ, ㄹ, ㄴ)로 변환
+                # (유니코드 \u11b8 = ᆸ, \u11af = ᆯ, \u11ab = ᆫ)
+                normalized_form = token.form.replace('\u11b8', 'ㅂ').replace('\u11af', 'ㄹ').replace('\u11ab', 'ㄴ')
+
+                # EF(종결 어미) 태그 발견 시, 뒤에 떨어져 있던 '요'(has_yo)가 있다면 결합
+                if token.tag == 'EF': 
+                    found_ef = normalized_form + has_yo
                     break
-                """
-                기존 코드                
-                # 의미 없는 기호나 서술격 조사는 건너뜀
-                # 핵심: EF를 찾기 전까지는 계속 탐색하되, 
-                # 일반 명사(NNG)나 동사 어간(VV)을 만나버리면 종결어미가 없다고 판단하고 중단할 수도 있음
-                if token.tag in ['VCP', 'VCN', 'SF']: 
+
+                # 탐색 무시 및 탐색 중단 로직 구현
+                # 문장 끝에 붙을 수 있는 마침표(SF), 쉼표(SP), 인용부호(SS)는 패스하고 계속 탐색
+                if token.tag in ['SF', 'SP', 'SS']: 
                     continue
-                """
-                # [보완 2] 탐색 무시 및 탐색 중단 로직 구현
-                # 문장 끝에 붙을 수 있는 마침표(SF), 쉼표(SP), 인용부호(SS), 보조사 '요'(JX)는 패스하고 계속 탐색
-                if token.tag in ['SF', 'SP', 'SS', 'JX']: 
-                    continue
-                
-                # [보완 2] 구어체 존댓말 캐치: 보조사 '요'(JX)를 만나면 기억해둠
-                if token.tag == 'JX' and token.form == '요':
-                    has_yo = "요"
+
+                # [수정 4] 구어체 존댓말 보조사(JX) '요'를 정상적으로 캐치하여 임시 저장
+                if token.tag == 'JX':
+                    if token.form == '요':
+                        has_yo = "요"
                     continue
 
                 # [보완 3] 종결어미(EF)뿐만 아니라 연결어미(EC)도 문장 끝에 오면 어미로 인정
-                if token.tag in ['EF', 'EC']:
-                    # 예: '고'(EC) + '요'(JX) -> "고요" 조립
-                    found_ef = token.form + has_yo
+                if token.tag == 'EC':
+                    found_ef = normalized_form + has_yo
                     break
 
-                # 명사(NNG)나 동사 어간(VV) 선어말어미(EP) 등을 만나면 종결어미가 생략된 '미완결 문장'으로 판단하고 즉시 중단        
+                # 명사(NNG)나 동사 어간(VV) 등을 만나면 종결어미가 없는 것으로 간주
                 break
 
             # 스타일 판별 및 완성 문장 카운트

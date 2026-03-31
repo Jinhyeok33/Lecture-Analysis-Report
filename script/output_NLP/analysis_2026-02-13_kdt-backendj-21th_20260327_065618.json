@@ -1,0 +1,62 @@
+{
+  "lecture_id": "2026-02-13_kdt-backendj-21th",
+  "language_quality": {
+    "repeat_expressions": {
+      "이제": 197,
+      "좀": 71,
+      "그": 14,
+      "일단": 83,
+      "뭐": 86,
+      "그래서": 147,
+      "자": 42,
+      "저": 5,
+      "네": 15,
+      "그러면": 64,
+      "약간": 18,
+      "아": 14,
+      "이": 6,
+      "그렇지": 10,
+      "저기": 4,
+      "그러니까": 16,
+      "그래": 4,
+      "아우": 1,
+      "옳지": 7,
+      "거": 4,
+      "사실": 8,
+      "어": 7,
+      "오케": 1,
+      "크": 4,
+      "예": 2,
+      "어허": 2,
+      "히": 1,
+      "어쨌든": 6,
+      "에": 1,
+      "그지": 3,
+      "어디": 1,
+      "얘": 2,
+      "그죠": 1,
+      "여": 1,
+      "워": 1,
+      "아이고": 1,
+      "우": 1
+    },
+    "total_sentences": 1668,
+    "total_token_count": 53563,
+    "total_filler_count": 851,
+    "repeat_ratio": 0.5102,
+    "repeat_density": 0.0159,
+    "incomplete_sentence_ratio": 0.453,
+    "speech_style_ratio": {
+      "formal": 0.257,
+      "informal": 0.29
+    }
+  },
+  "concept_clarity_metrics": {
+    "speech_rate_wpm": 96,
+    "classification": "very_low",
+    "score": 3
+  },
+  "interaction_metrics": {
+    "understanding_question_count": 46
+  }
+}

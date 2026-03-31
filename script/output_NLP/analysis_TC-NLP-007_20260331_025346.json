@@ -1,0 +1,31 @@
+{
+  "lecture_id": "TC-NLP-007",
+  "language_quality": {
+    "repeat_expressions": {
+      "자": 1,
+      "이제": 1,
+      "그래서": 1,
+      "일단": 1
+    },
+    "total_sentences": 4,
+    "total_token_count": 24,
+    "total_filler_count": 4,
+    "repeat_ratio": 1.0,
+    "repeat_density": 0.1667,
+    "incomplete_sentence_ratio": 1.0,
+    "speech_style_ratio": {
+      "formal": 0.0,
+      "informal": 0.0
+    }
+  },
+  "concept_clarity_metrics": {
+    "total_words": 13,
+    "effective_duration_sec": 12,
+    "speech_rate_wpm": 65,
+    "classification": "very_low",
+    "score": 3
+  },
+  "interaction_metrics": {
+    "understanding_question_count": 0
+  }
+}

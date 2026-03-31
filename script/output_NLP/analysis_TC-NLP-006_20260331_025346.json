@@ -1,0 +1,26 @@
+{
+  "lecture_id": "TC-NLP-006",
+  "language_quality": {
+    "repeat_expressions": {},
+    "total_sentences": 3,
+    "total_token_count": 39,
+    "total_filler_count": 0,
+    "repeat_ratio": 0.0,
+    "repeat_density": 0.0,
+    "incomplete_sentence_ratio": 0.0,
+    "speech_style_ratio": {
+      "formal": 1.0,
+      "informal": 0.0
+    }
+  },
+  "concept_clarity_metrics": {
+    "total_words": 15,
+    "effective_duration_sec": 10,
+    "speech_rate_wpm": 90,
+    "classification": "very_low",
+    "score": 3
+  },
+  "interaction_metrics": {
+    "understanding_question_count": 0
+  }
+}

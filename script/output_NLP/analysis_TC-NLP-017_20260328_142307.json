@@ -1,0 +1,26 @@
+{
+  "lecture_id": "TC-NLP-017",
+  "language_quality": {
+    "repeat_expressions": {
+      "저": 1
+    },
+    "total_sentences": 6,
+    "total_token_count": 102,
+    "total_filler_count": 1,
+    "repeat_ratio": 0.1667,
+    "repeat_density": 0.0098,
+    "incomplete_sentence_ratio": 0.0,
+    "speech_style_ratio": {
+      "formal": 0.667,
+      "informal": 0.333
+    }
+  },
+  "concept_clarity_metrics": {
+    "speech_rate_wpm": 159,
+    "classification": "optimal",
+    "score": 5
+  },
+  "interaction_metrics": {
+    "understanding_question_count": 1
+  }
+}

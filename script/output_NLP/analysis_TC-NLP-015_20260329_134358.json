@@ -1,0 +1,31 @@
+{
+  "lecture_id": "TC-NLP-015",
+  "language_quality": {
+    "repeat_expressions": {
+      "그러면": 1,
+      "이제": 1,
+      "그래서": 2,
+      "어": 1,
+      "그러니까": 1,
+      "자": 1
+    },
+    "total_sentences": 11,
+    "total_token_count": 240,
+    "total_filler_count": 7,
+    "repeat_ratio": 0.6364,
+    "repeat_density": 0.0292,
+    "incomplete_sentence_ratio": 0.455,
+    "speech_style_ratio": {
+      "formal": 0.091,
+      "informal": 0.455
+    }
+  },
+  "concept_clarity_metrics": {
+    "speech_rate_wpm": 89,
+    "classification": "very_low",
+    "score": 3
+  },
+  "interaction_metrics": {
+    "understanding_question_count": 1
+  }
+}

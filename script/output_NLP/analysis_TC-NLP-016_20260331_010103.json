@@ -1,0 +1,29 @@
+{
+  "lecture_id": "TC-NLP-016",
+  "language_quality": {
+    "repeat_expressions": {
+      "이제": 1,
+      "네": 1
+    },
+    "total_sentences": 7,
+    "total_token_count": 100,
+    "total_filler_count": 2,
+    "repeat_ratio": 0.2857,
+    "repeat_density": 0.02,
+    "incomplete_sentence_ratio": 0.143,
+    "speech_style_ratio": {
+      "formal": 0.714,
+      "informal": 0.143
+    }
+  },
+  "concept_clarity_metrics": {
+    "total_words": 45,
+    "effective_duration_sec": 21,
+    "speech_rate_wpm": 129,
+    "classification": "low",
+    "score": 4
+  },
+  "interaction_metrics": {
+    "understanding_question_count": 0
+  }
+}

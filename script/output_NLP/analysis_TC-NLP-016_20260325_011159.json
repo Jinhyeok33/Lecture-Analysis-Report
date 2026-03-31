@@ -1,0 +1,23 @@
+{
+  "lecture_id": "TC-NLP-016",
+  "language_quality": {
+    "repeat_expressions": {},
+    "total_sentences": 1,
+    "total_filler_count": 0,
+    "repeat_ratio": 0.0,
+    "repeat_density": 0.0,
+    "incomplete_sentence_ratio": 1.0,
+    "speech_style_ratio": {
+      "formal": 0.0,
+      "informal": 0.0
+    }
+  },
+  "concept_clarity_metrics": {
+    "speech_rate_wpm": 0,
+    "classification": "very_low",
+    "score": 3
+  },
+  "interaction_metrics": {
+    "understanding_question_count": 0
+  }
+}

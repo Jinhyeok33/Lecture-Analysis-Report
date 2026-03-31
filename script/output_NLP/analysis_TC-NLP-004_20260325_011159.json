@@ -1,0 +1,25 @@
+{
+  "lecture_id": "TC-NLP-004",
+  "language_quality": {
+    "repeat_expressions": {
+      "그래서": 4 ok
+    },
+    "total_sentences": 4, ok
+    "total_filler_count": 4, ok
+    "repeat_ratio": 1.0, ok
+    "repeat_density": 0.0541, 
+    "incomplete_sentence_ratio": 0.75,
+    "speech_style_ratio": {
+      "formal": 0.25,
+      "informal": 0.0
+    }
+  },
+  "concept_clarity_metrics": {
+    "speech_rate_wpm": 74,
+    "classification": "very_low",
+    "score": 3
+  },
+  "interaction_metrics": {
+    "understanding_question_count": 0
+  }
+}

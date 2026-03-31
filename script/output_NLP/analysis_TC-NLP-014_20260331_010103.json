@@ -1,0 +1,31 @@
+{
+  "lecture_id": "TC-NLP-014",
+  "language_quality": {
+    "repeat_expressions": {
+      "이제": 2,
+      "그래서": 2,
+      "좀": 1,
+      "일단": 1
+    },
+    "total_sentences": 7,
+    "total_token_count": 200,
+    "total_filler_count": 6,
+    "repeat_ratio": 0.8571,
+    "repeat_density": 0.03,
+    "incomplete_sentence_ratio": 0.571,
+    "speech_style_ratio": {
+      "formal": 0.429,
+      "informal": 0.0
+    }
+  },
+  "concept_clarity_metrics": {
+    "total_words": 103,
+    "effective_duration_sec": 28,
+    "speech_rate_wpm": 221,
+    "classification": "excessive",
+    "score": 2
+  },
+  "interaction_metrics": {
+    "understanding_question_count": 0
+  }
+}

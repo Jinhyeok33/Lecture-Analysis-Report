@@ -1,0 +1,12 @@
+{
+  "lecture_id": "TC-NLP-023",
+  "language_quality": {},
+  "concept_clarity_metrics": {
+    "total_words": 0,
+    "effective_duration_sec": 0,
+    "speech_rate_wpm": 0,
+    "classification": "silent",
+    "score": 0
+  },
+  "interaction_metrics": {}
+}
