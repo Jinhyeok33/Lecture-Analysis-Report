@@ -234,6 +234,62 @@ def remove_existing_artifacts(repo_root: Path, lecture_id: str) -> None:
             path.unlink()
 
 
+def report_downloads(repo_root: Path, lecture_id: str) -> dict[str, str]:
+    integrated_path = integrated_json_path(repo_root / "data" / "outputs" / "integrated", lecture_id)
+    pdf_path = report_pdf_path(repo_root / "data" / "outputs" / "reports", lecture_id)
+    return {
+        "json_url": f"/api/download/json?lecture_id={quote(lecture_id)}" if integrated_path.exists() else "",
+        "pdf_url": f"/api/download/pdf?lecture_id={quote(lecture_id)}" if pdf_path.exists() else "",
+    }
+
+
+def build_report_entry(repo_root: Path, lecture_id: str, data: dict, updated_at: float) -> dict:
+    metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+    analysis = data.get("analysis") if isinstance(data.get("analysis"), dict) else {}
+    return {
+        "lecture_id": lecture_id,
+        "analysis": {
+            "lecture_id": lecture_id,
+            "metadata": metadata,
+            "analysis": analysis,
+        },
+        "downloads": report_downloads(repo_root, lecture_id),
+        "updated_at": updated_at,
+    }
+
+
+def read_report_entry_from_path(repo_root: Path, path: Path) -> dict | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return None
+
+    lecture_id = data.get("lecture_id") or path.stem.removeprefix("integrated_")
+    return build_report_entry(repo_root, lecture_id, data, path.stat().st_mtime)
+
+
+def report_sort_key(item: dict) -> tuple[str, float]:
+    analysis = item.get("analysis") if isinstance(item.get("analysis"), dict) else {}
+    metadata = analysis.get("metadata") if isinstance(analysis.get("metadata"), dict) else {}
+    lecture_date = metadata.get("date")
+    return (str(lecture_date or ""), float(item.get("updated_at") or 0))
+
+
+def list_reports(repo_root: Path) -> list[dict]:
+    integrated_dir = repo_root / "data" / "outputs" / "integrated"
+    reports: list[dict] = []
+    if not integrated_dir.exists():
+        return reports
+
+    for path in integrated_dir.glob("integrated_*.json"):
+        report = read_report_entry_from_path(repo_root, path)
+        if report is not None:
+            reports.append(report)
+
+    reports.sort(key=report_sort_key, reverse=True)
+    return reports
+
+
 @dataclass
 class AnalysisResult:
     lecture_id: str
@@ -473,6 +529,10 @@ class EduInsightHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/health":
             json_response(self, HTTPStatus.OK, {"ok": True})
+            return
+
+        if parsed.path == "/api/reports":
+            json_response(self, HTTPStatus.OK, {"ok": True, "reports": list_reports(self.repo_root)})
             return
 
         if parsed.path == "/api/analyze/status":

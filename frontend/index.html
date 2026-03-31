@@ -1,17 +1,17 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>EduInsightAI | 강의 분석 리포트</title>
+    <title>EduInsightAI | Lecture Report Dashboard</title>
     <meta
       name="description"
-      content="강의 스크립트와 메타데이터로 AI 강의 분석 리포트를 생성하는 EduInsightAI"
+      content="누적 강의 리포트를 운영 대시보드, 상세 리포트, 분석 실행 워크스페이스로 관리하는 EduInsightAI"
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&family=Outfit:wght@400;500;600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&family=Outfit:wght@500;600;700;800&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
@@ -21,458 +21,331 @@
 
     <div class="ambient ambient--one" aria-hidden="true"></div>
     <div class="ambient ambient--two" aria-hidden="true"></div>
-    <div class="ambient-lines" aria-hidden="true"></div>
+    <div class="grid-overlay" aria-hidden="true"></div>
 
     <header class="site-header">
-      <nav class="nav">
+      <div class="site-header__inner">
         <div class="brand" aria-label="EduInsightAI">
           <span class="brand-mark" aria-hidden="true">AI</span>
-          <span class="brand-name">EduInsightAI</span>
+          <div>
+            <strong class="brand-name">EduInsightAI</strong>
+            <p class="brand-subtitle">Lecture Report Dashboard</p>
+          </div>
         </div>
-        <div class="nav-links" role="navigation" aria-label="페이지 섹션">
-          <a href="#intro">Home</a>
-          <a href="#workflow">Features</a>
-          <a href="#summary">Report</a>
-          <a href="#download">About</a>
+
+        <nav class="top-nav" aria-label="주요 화면">
+          <a class="top-nav__link" data-route-link="dashboard" href="#dashboard">대시보드</a>
+          <a class="top-nav__link" data-route-link="detail" href="#detail">리포트 상세</a>
+          <a class="top-nav__link" data-route-link="analyze" href="#analyze">새 분석</a>
+        </nav>
+
+        <div class="top-actions">
+          <button type="button" class="btn btn-secondary" id="header-refresh">새로고침</button>
+          <a class="btn btn-primary" data-route-link="analyze" href="#analyze">+ 새 분석</a>
         </div>
-        <button
-          class="btn btn-logo-button"
-          type="button"
-          data-scroll="input"
-          aria-label="분석 시작하기"
-        >
-          <img class="btn-logo-image" src="assets/nav-logo.svg" alt="" />
-        </button>
-      </nav>
+      </div>
     </header>
 
-    <main id="main">
-      <section id="intro" class="section hero">
-        <div class="hero-content">
-          <p class="eyebrow">AI Lecture Quality Report</p>
-          <h1>
-            AI로 분석하는<br />
-            <span>강의 품질</span> 리포트
-          </h1>
-          <p class="lead">
-            강의의 강점은 살리고, 개선 포인트는 빠르게 확인해 더 나은 수업으로
-            연결하세요.
-          </p>
-          <div class="hero-actions">
-            <button class="btn btn-primary btn-hero" type="button" data-scroll="input">
-              분석 시작하기
-            </button>
-            <a class="btn btn-ghost" href="#summary">리포트 미리보기</a>
+    <main id="main" class="app-shell">
+      <section class="view view--dashboard" id="view-dashboard">
+        <div class="view-head">
+          <div>
+            <p class="eyebrow">Dashboard Home</p>
+            <h1>리포트 대시보드</h1>
+            <p class="lead">
+              누적된 강의 리포트를 한 화면에서 비교하고, 바로 필요한 리포트로 들어갈 수 있게 정리했습니다.
+            </p>
           </div>
-          <div class="support-tags" aria-label="지원 형식 안내">
-            <span>txt 스크립트 업로드</span>
-            <span>metadata 입력</span>
-            <span>PDF/JSON 다운로드</span>
+
+          <div class="filter-cluster">
+            <label class="filter-field filter-field--instructor">
+              <span>강사</span>
+              <select id="filter-instructor">
+                <option value="all">전체 강사</option>
+              </select>
+            </label>
+            <label class="filter-field filter-field--course">
+              <span>과정</span>
+              <select id="filter-course">
+                <option value="all">전체 과정</option>
+              </select>
+            </label>
+            <label class="filter-field filter-field--period">
+              <span>기간</span>
+              <select id="filter-period">
+                <option value="all">전체</option>
+                <option value="30">최근 30일</option>
+                <option value="90">최근 90일</option>
+              </select>
+            </label>
           </div>
         </div>
 
-        <aside class="hero-panel" role="presentation">
-          <div class="hero-panel__header">
-            <h2>강의 품질 점수</h2>
-            <p><strong id="hero-score-value">-</strong> / 100</p>
+        <section class="stats-grid" aria-label="핵심 지표">
+          <article class="metric-card">
+            <p class="metric-card__label">누적 리포트</p>
+            <strong id="dashboard-total">-</strong>
+            <span class="metric-card__meta">현재 불러온 분석 결과</span>
+          </article>
+          <article class="metric-card">
+            <p class="metric-card__label">평균 점수</p>
+            <strong id="dashboard-average">-</strong>
+            <span class="metric-card__meta">필터 적용 기준 평균</span>
+          </article>
+          <article class="metric-card">
+            <p class="metric-card__label">주의 필요</p>
+            <strong id="dashboard-risk">-</strong>
+            <span class="metric-card__meta">총점 75점 미만</span>
+          </article>
+          <article class="metric-card">
+            <p class="metric-card__label">최근 추세</p>
+            <strong id="dashboard-delta">-</strong>
+            <span class="metric-card__meta">최근 3건 vs 이전 3건</span>
+          </article>
+        </section>
+
+        <section class="dashboard-grid">
+          <article class="panel panel--wide">
+            <div class="panel__head">
+              <div>
+                <h2>점수 추이</h2>
+                <p id="trend-caption">최근 리포트 흐름을 확인합니다.</p>
+              </div>
+              <a class="btn btn-chip" data-route-link="analyze" href="#analyze">새 분석 실행</a>
+            </div>
+            <div class="trend-card">
+              <svg id="trend-chart" viewBox="0 0 880 280" aria-label="점수 추이 차트"></svg>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel__head">
+              <div>
+                <h2>5개 카테고리 평균</h2>
+                <p>누적 리포트 평균</p>
+              </div>
+            </div>
+            <div class="category-bars" id="dashboard-category-list"></div>
+          </article>
+        </section>
+
+        <section class="dashboard-grid dashboard-grid--bottom">
+          <article class="panel panel--wide">
+            <div class="panel__head">
+              <div>
+                <h2>리포트 목록</h2>
+                <p>행을 클릭하면 상세 리포트로 이동합니다.</p>
+              </div>
+            </div>
+
+            <div class="table-shell">
+              <table class="report-table">
+                <thead>
+                  <tr>
+                    <th>일자</th>
+                    <th>강의</th>
+                    <th>강사</th>
+                    <th>점수</th>
+                    <th>취약 카테고리</th>
+                    <th>보기</th>
+                  </tr>
+                </thead>
+                <tbody id="report-table-body">
+                  <tr>
+                    <td colspan="6">리포트 목록을 불러오는 중입니다.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel__head">
+              <div>
+                <h2>반복 이슈 TOP 5</h2>
+                <p>개선 필요 사항 빈도 기준</p>
+              </div>
+            </div>
+            <ol class="issue-list" id="issue-list">
+              <li>리포트를 불러오면 집계가 표시됩니다.</li>
+            </ol>
+          </article>
+        </section>
+      </section>
+
+      <section class="view view--detail" id="view-detail" hidden>
+        <div class="view-head view-head--detail">
+          <div>
+            <p class="eyebrow">Report Detail</p>
+            <h1 id="detail-title">리포트 상세</h1>
+            <p class="lead" id="detail-subtitle">
+              대시보드에서 선택한 리포트를 요약, 상세, 근거, 다운로드까지 한 화면에서 확인합니다.
+            </p>
           </div>
 
-          <div class="hero-panel__body">
-            <div class="hero-ring" id="hero-ring" aria-hidden="true">
-              <div class="hero-ring__inner">
-                <strong id="hero-ring-score">-</strong>
+          <div class="view-head__actions">
+            <a class="btn btn-secondary" id="detail-back-dashboard" href="#dashboard">대시보드로</a>
+            <a class="btn btn-secondary" id="detail-compare-report" href="#" aria-disabled="true">이전 리포트와 비교</a>
+            <a class="btn btn-primary" data-route-link="analyze" href="#analyze">+ 새 분석</a>
+          </div>
+        </div>
+
+        <section class="meta-strip">
+          <div>
+            <span>강의명</span>
+            <strong id="detail-meta-course">-</strong>
+          </div>
+          <div>
+            <span>강사</span>
+            <strong id="detail-meta-instructor">-</strong>
+          </div>
+          <div>
+            <span>일시</span>
+            <strong id="detail-meta-time">-</strong>
+          </div>
+          <div>
+            <span>주제 / 내용</span>
+            <strong id="detail-meta-topic">-</strong>
+          </div>
+        </section>
+
+        <section class="report-summary-grid">
+          <article class="panel panel--score">
+            <p class="metric-card__label">종합 점수</p>
+            <div class="score-ring">
+              <div class="score-ring__inner">
+                <strong id="detail-overall-score">-</strong>
                 <span>Overall</span>
               </div>
             </div>
-            <div class="hero-radar" aria-hidden="true">
-              <div class="hero-radar__shape"></div>
-              <ul>
-                <li>언어 표현</li>
-                <li>도입/구조</li>
-                <li>개념 설명</li>
-                <li>예시/실습</li>
-                <li>상호작용</li>
-              </ul>
-            </div>
-          </div>
-
-          <div class="hero-top">
-            <h3>개선 필요 항목 Top 3</h3>
-            <ol>
-              <li id="hero-top-1">분석 후 자동 제안됩니다.</li>
-              <li id="hero-top-2">분석 후 자동 제안됩니다.</li>
-              <li id="hero-top-3">분석 후 자동 제안됩니다.</li>
-            </ol>
-          </div>
-        </aside>
-      </section>
-
-      <section id="workflow" class="section">
-        <div class="section-header">
-          <h2>과학적 분석으로 강의 품질을 향상하세요</h2>
-          <p>입력부터 리포트 다운로드까지 3단계로 완료됩니다.</p>
-        </div>
-        <ol class="workflow-rail" aria-label="분석 단계">
-          <li class="workflow-card">
-            <p class="workflow-card__step">1</p>
-            <h3>스크립트 업로드</h3>
-            <p>강의 녹취 스크립트(.txt)를 업로드합니다.</p>
-          </li>
-          <li class="workflow-card">
-            <p class="workflow-card__step">2</p>
-            <h3>NLP/LLM 분석</h3>
-            <p>언어 표현 품질부터 수강생 상호작용까지 5대 기준을 분석합니다.</p>
-          </li>
-          <li class="workflow-card">
-            <p class="workflow-card__step">3</p>
-            <h3>리포트 생성</h3>
-            <p>요약/상세 결과를 확인하고 PDF, JSON으로 받습니다.</p>
-          </li>
-        </ol>
-      </section>
-
-      <section id="input" class="section">
-        <div class="section-header">
-          <h2>입력 영역</h2>
-          <p>강의 스크립트와 기본 메타데이터를 입력하세요.</p>
-        </div>
-
-        <form id="analysis-form" class="form-grid" autocomplete="off" novalidate>
-          <div class="form-card">
-            <h3>파일 업로드</h3>
-            <label class="field">
-              <span>강의 스크립트 txt 업로드</span>
-              <input
-                type="file"
-                id="script-file"
-                name="script_file"
-                accept=".txt"
-                required
-                aria-describedby="file-help"
-              />
-            </label>
-            <p id="file-help" class="field-help">.txt 파일만 지원합니다.</p>
-          </div>
-
-          <div class="form-card">
-            <h3>Metadata 입력</h3>
-            <div class="metadata-csv-upload">
-              <label class="field">
-                <span>CSV로 메타데이터 업로드 (선택)</span>
-                <input
-                  type="file"
-                  id="metadata-csv"
-                  name="metadata_csv"
-                  accept=".csv"
-                  aria-describedby="csv-help"
-                />
-              </label>
-              <p id="csv-help" class="field-help">
-                CSV 헤더: course_id, course_name, date, time, subject, content, instructor, sub_instructor
-              </p>
-              <div id="csv-session-picker" class="csv-session-picker" hidden>
-                <label class="field">
-                  <span>강의 세션 선택</span>
-                  <select id="csv-session-select"></select>
-                </label>
-                <button class="btn btn-secondary csv-apply-btn" type="button" id="csv-apply">적용</button>
-              </div>
-            </div>
-            <hr class="form-divider" />
-            <div class="field-grid">
-              <label class="field">
-                <span>course_id</span>
-                <input
-                  type="text"
-                  name="course_id"
-                  placeholder="예: LEC-2026-001"
-                  required
-                  spellcheck="false"
-                />
-              </label>
-              <label class="field">
-                <span>course_name</span>
-                <input
-                  type="text"
-                  name="course_name"
-                  placeholder="예: 데이터 리터러시 입문"
-                  required
-                />
-              </label>
-              <label class="field">
-                <span>date</span>
-                <input type="date" name="date" required />
-              </label>
-              <label class="field">
-                <span>time</span>
-                <input
-                  type="text"
-                  name="time"
-                  placeholder="예: 09:00 ~ 12:00"
-                  required
-                />
-              </label>
-              <label class="field">
-                <span>subject</span>
-                <input
-                  type="text"
-                  name="subject"
-                  placeholder="예: 확률과 통계"
-                  required
-                />
-              </label>
-              <label class="field">
-                <span>content</span>
-                <textarea
-                  name="content"
-                  rows="3"
-                  placeholder="예: 확률 분포, 기대값, 분산"
-                  required
-                ></textarea>
-              </label>
-              <label class="field">
-                <span>instructor</span>
-                <input
-                  type="text"
-                  name="instructor"
-                  placeholder="예: 김인사이트"
-                  required
-                />
-              </label>
-              <label class="field">
-                <span>sub_instructor</span>
-                <input
-                  type="text"
-                  name="sub_instructor"
-                  placeholder="예: 이조교"
-                  required
-                />
-              </label>
-            </div>
-          </div>
-        </form>
-      </section>
-
-      <section id="run" class="section">
-        <div class="section-header">
-          <h2>분석 실행 영역</h2>
-          <p>단계별 진행 상태를 실시간으로 확인할 수 있습니다.</p>
-        </div>
-        <div class="run-grid">
-          <div class="run-card">
-            <div class="run-card__header">
-              <h3>분석 시작</h3>
-              <div class="run-controls">
-                <span class="analysis-pill is-idle" id="analysis-pill">대기</span>
-                <button class="btn btn-primary" id="start-analysis" type="button">
-                  분석 시작
-                </button>
-              </div>
-            </div>
-            <p class="status-live" id="status-live" aria-live="polite">대기 중…</p>
-            <div class="progress">
-              <div class="progress-bar" id="progress-bar"></div>
-            </div>
-          </div>
-
-          <div class="run-card">
-            <h3>진행 상태</h3>
-            <ol class="status-list" id="status-list">
-              <li data-step="0">NLP 분석 중</li>
-              <li data-step="1">LLM 분석 중</li>
-              <li data-step="2">통합 중</li>
-              <li data-step="3">리포트 생성 중</li>
-            </ol>
-          </div>
-        </div>
-      </section>
-
-      <section id="summary" class="section">
-        <div class="section-header">
-          <h2>결과 요약 영역</h2>
-          <p>완료 즉시 핵심 결과를 카드 단위로 확인하세요.</p>
-        </div>
-
-        <div class="summary-overview" id="summary-overview" data-ready="false">
-          <article class="overview-card overview-card--score">
-            <p class="overview-label">총점</p>
-            <strong id="overall-score">-</strong>
-            <p class="overview-meta">
-              <span id="overall-level">분석 전</span>
-              <span id="overall-delta">기준 대비 -</span>
-            </p>
-          </article>
-
-          <article class="overview-card overview-card--lecture">
-            <p class="overview-label">강의 정보</p>
-            <div class="summary-list" id="lecture-info">
-              <div>
-                <span>course_name</span>
-                <strong>분석 전…</strong>
-              </div>
-              <div>
-                <span>instructor</span>
-                <strong>분석 전…</strong>
-              </div>
-              <div>
-                <span>sub_instructor</span>
-                <strong>분석 전…</strong>
-              </div>
-              <div>
-                <span>date / time</span>
-                <strong>분석 전…</strong>
-              </div>
-              <div>
-                <span>subject</span>
-                <strong>분석 전…</strong>
-              </div>
-              <div>
-                <span>content</span>
-                <strong>분석 전…</strong>
-              </div>
+            <div class="score-meta">
+              <strong id="detail-overall-level">분석 전</strong>
+              <span id="detail-overall-delta">기준 대비 -</span>
             </div>
           </article>
 
-          <article class="overview-card overview-card--scores">
-            <p class="overview-label">카테고리별 점수</p>
-            <div class="score-grid" id="score-grid">
-              <div class="score-item">
-                <div class="score-item__head">
-                  <span>언어 표현 품질</span>
-                  <strong id="score-delivery">?</strong>
-                </div>
-                <div class="score-meter" role="presentation">
-                  <span class="score-meter__fill" id="meter-delivery"></span>
-                </div>
-              </div>
-              <div class="score-item">
-                <div class="score-item__head">
-                  <span>강의 도입 및 구조</span>
-                  <strong id="score-structure">?</strong>
-                </div>
-                <div class="score-meter" role="presentation">
-                  <span class="score-meter__fill" id="meter-structure"></span>
-                </div>
-              </div>
-              <div class="score-item">
-                <div class="score-item__head">
-                  <span>개념 설명 명확성</span>
-                  <strong id="score-concept">?</strong>
-                </div>
-                <div class="score-meter" role="presentation">
-                  <span class="score-meter__fill" id="meter-concept"></span>
-                </div>
-              </div>
-              <div class="score-item">
-                <div class="score-item__head">
-                  <span>예시 및 실습 연계</span>
-                  <strong id="score-practice">?</strong>
-                </div>
-                <div class="score-meter" role="presentation">
-                  <span class="score-meter__fill" id="meter-practice"></span>
-                </div>
-              </div>
-              <div class="score-item">
-                <div class="score-item__head">
-                  <span>수강생 상호작용</span>
-                  <strong id="score-interaction">?</strong>
-                </div>
-                <div class="score-meter" role="presentation">
-                  <span class="score-meter__fill" id="meter-interaction"></span>
-                </div>
+          <article class="panel">
+            <div class="panel__head">
+              <div>
+                <h2>핵심 강점</h2>
+                <p>이번 리포트에서 높게 평가된 항목</p>
               </div>
             </div>
+            <ul class="stack-list" id="detail-strength-list">
+              <li>리포트를 선택하면 강점이 표시됩니다.</li>
+            </ul>
           </article>
-        </div>
 
-        <div class="summary-grid" id="summary-grid" data-ready="false">
-          <div class="summary-card summary-card--full">
-            <div class="summary-card__head">
-              <h3>핵심 강점</h3>
-              <button type="button" class="summary-more-btn" id="strength-more" hidden>더보기</button>
+          <article class="panel">
+            <div class="panel__head">
+              <div>
+                <h2>개선 필요 사항</h2>
+                <p>다음 강의에서 우선 보강할 포인트</p>
+              </div>
             </div>
-            <ul id="strength-list">
-              <li>분석 완료 후 표시됩니다.</li>
+            <ul class="stack-list stack-list--alert" id="detail-weakness-list">
+              <li>리포트를 선택하면 개선 항목이 표시됩니다.</li>
             </ul>
-          </div>
+          </article>
+        </section>
 
-          <div class="summary-card summary-card--full">
-            <div class="summary-card__head">
-              <h3>개선 필요 사항</h3>
-              <button type="button" class="summary-more-btn" id="weakness-more" hidden>더보기</button>
+        <section class="panel">
+          <div class="panel__head">
+            <div>
+              <h2>카테고리별 점수</h2>
+              <p>리포트 상단 요약에 해당하는 5개 품질 기준</p>
             </div>
-            <ul id="weakness-list">
-              <li>분석 완료 후 표시됩니다.</li>
-            </ul>
           </div>
 
-          <div class="summary-card summary-card--full">
-            <div class="summary-card__head">
-              <h3>분석 근거</h3>
-              <button type="button" class="summary-more-btn" id="evidence-more" hidden>더보기</button>
+          <div class="summary-score-grid">
+            <div class="score-card">
+              <span>언어 표현 품질</span>
+              <strong id="score-language">-</strong>
+              <div class="score-meter"><span id="meter-language"></span></div>
             </div>
-            <ul id="evidence-list">
-              <li>분석 완료 후 표시됩니다.</li>
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      <section id="detail" class="section">
-        <div class="section-header">
-          <h2>상세 분석 영역</h2>
-          <p>강의 품질 기준서의 5개 카테고리로 세부 평가를 확인하세요.</p>
-        </div>
-        <div class="detail-grid detail-grid--categories">
-          <div class="summary-card detail-card detail-card--category">
-            <div class="summary-card__head detail-card__head">
-              <h3>1. 언어 표현 품질</h3>
-              <strong class="detail-category-summary" id="detail-language-summary">?</strong>
+            <div class="score-card">
+              <span>강의 도입 및 구조</span>
+              <strong id="score-structure">-</strong>
+              <div class="score-meter"><span id="meter-structure"></span></div>
             </div>
-            <div class="detail-subscore-list" id="detail-language-items"></div>
-          </div>
-
-          <div class="summary-card detail-card detail-card--category">
-            <div class="summary-card__head detail-card__head">
-              <h3>2. 강의 도입 및 구조</h3>
-              <strong class="detail-category-summary" id="detail-structure-summary">?</strong>
+            <div class="score-card">
+              <span>개념 설명 명확성</span>
+              <strong id="score-concept">-</strong>
+              <div class="score-meter"><span id="meter-concept"></span></div>
             </div>
-            <div class="detail-subscore-list" id="detail-structure-items"></div>
-          </div>
-
-          <div class="summary-card detail-card detail-card--category">
-            <div class="summary-card__head detail-card__head">
-              <h3>3. 개념 설명 명확성</h3>
-              <strong class="detail-category-summary" id="detail-concept-summary">?</strong>
+            <div class="score-card">
+              <span>예시 및 실습 연계</span>
+              <strong id="score-practice">-</strong>
+              <div class="score-meter"><span id="meter-practice"></span></div>
             </div>
-            <div class="detail-subscore-list" id="detail-concept-items"></div>
-          </div>
-
-          <div class="summary-card detail-card detail-card--category">
-            <div class="summary-card__head detail-card__head">
-              <h3>4. 예시 및 실습 연계</h3>
-              <strong class="detail-category-summary" id="detail-practice-summary">?</strong>
+            <div class="score-card">
+              <span>수강생 상호작용</span>
+              <strong id="score-interaction">-</strong>
+              <div class="score-meter"><span id="meter-interaction"></span></div>
             </div>
-            <div class="detail-subscore-list" id="detail-practice-items"></div>
           </div>
+        </section>
 
-          <div class="summary-card detail-card detail-card--category">
-            <div class="summary-card__head detail-card__head">
-              <h3>5. 수강생 상호작용</h3>
-              <strong class="detail-category-summary" id="detail-interaction-summary">?</strong>
+        <section class="panel">
+          <div class="panel__head">
+            <div>
+              <h2>분석 근거</h2>
+              <p>리포트에 포함된 대표 evidence</p>
             </div>
-            <div class="detail-subscore-list" id="detail-interaction-items"></div>
           </div>
-        </div>
-      </section>
+          <ul class="evidence-list" id="detail-evidence-list">
+            <li>리포트를 선택하면 분석 근거가 표시됩니다.</li>
+          </ul>
+        </section>
 
-      <section id="download" class="section">
-        <div class="section-header">
-          <h2>다운로드 영역</h2>
-          <p>분석 완료 후 결과물을 즉시 다운로드할 수 있습니다.</p>
-        </div>
+        <section class="panel">
+          <div class="panel__head">
+            <div>
+              <h2>5개 카테고리 상세</h2>
+              <p>세부 항목 점수와 카테고리 상태를 함께 봅니다.</p>
+            </div>
+          </div>
 
-        <div class="download-card">
+          <div class="detail-grid">
+            <article class="detail-card">
+              <div class="detail-card__head">
+                <h3>1. 언어 표현 품질</h3>
+                <strong id="detail-language-summary">?</strong>
+              </div>
+              <div class="detail-subscore-list" id="detail-language-items"></div>
+            </article>
+            <article class="detail-card">
+              <div class="detail-card__head">
+                <h3>2. 강의 도입 및 구조</h3>
+                <strong id="detail-structure-summary">?</strong>
+              </div>
+              <div class="detail-subscore-list" id="detail-structure-items"></div>
+            </article>
+            <article class="detail-card">
+              <div class="detail-card__head">
+                <h3>3. 개념 설명 명확성</h3>
+                <strong id="detail-concept-summary">?</strong>
+              </div>
+              <div class="detail-subscore-list" id="detail-concept-items"></div>
+            </article>
+            <article class="detail-card">
+              <div class="detail-card__head">
+                <h3>4. 예시 및 실습 연계</h3>
+                <strong id="detail-practice-summary">?</strong>
+              </div>
+              <div class="detail-subscore-list" id="detail-practice-items"></div>
+            </article>
+            <article class="detail-card detail-card--wide">
+              <div class="detail-card__head">
+                <h3>5. 수강생 상호작용</h3>
+                <strong id="detail-interaction-summary">?</strong>
+              </div>
+              <div class="detail-subscore-list" id="detail-interaction-items"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="download-row">
           <a
             class="btn btn-secondary"
             id="download-pdf"
@@ -489,13 +362,230 @@
             aria-disabled="true"
             >최종 결과 다운로드</a
           >
-          <p class="download-note">분석 완료 후 버튼이 활성화됩니다.</p>
+        </section>
+      </section>
+
+      <section class="view view--analyze" id="view-analyze" hidden>
+        <div class="view-head">
+          <div>
+            <p class="eyebrow">Analysis Workspace</p>
+            <h1>새 강의 분석 실행</h1>
+            <p class="lead">
+              입력과 실행 상태를 메인 대시보드에서 분리해, 분석 작업 자체에만 집중하는
+              화면입니다.
+            </p>
+          </div>
+
+          <div class="view-head__actions">
+            <a class="btn btn-secondary" data-route-link="dashboard" href="#dashboard">대시보드로</a>
+          </div>
+        </div>
+
+        <div class="workspace-grid">
+          <form id="analysis-form" class="workspace-form" autocomplete="off" novalidate>
+            <article class="panel">
+              <div class="panel__head">
+                <div>
+                  <h2>입력 폼</h2>
+                  <p>분석 대상 transcript와 메타데이터를 입력합니다.</p>
+                </div>
+              </div>
+
+              <label class="upload-zone" id="script-upload-zone" tabindex="-1">
+                <input
+                  type="file"
+                  id="script-file"
+                  name="script_file"
+                  accept=".txt"
+                  required
+                  aria-describedby="error-script_file"
+                  hidden
+                />
+                <span class="upload-zone__title">TXT 업로드</span>
+                <span class="upload-zone__meta">파일을 선택하거나 드래그해서 업로드하세요.</span>
+                <strong id="upload-file-name">선택된 파일 없음</strong>
+              </label>
+              <p class="field-error field-error--upload" id="error-script_file" aria-live="polite"></p>
+
+              <div class="csv-upload">
+                <label class="field">
+                  <span>CSV로 메타데이터 업로드 (선택)</span>
+                  <input
+                    type="file"
+                    id="metadata-csv"
+                    name="metadata_csv"
+                    accept=".csv"
+                    autocomplete="off"
+                    aria-describedby="csv-help"
+                  />
+                </label>
+                <p id="csv-help" class="field-help">
+                  CSV 헤더: course_id, course_name, date, time, subject, content, instructor, sub_instructor
+                </p>
+                <div id="csv-session-picker" class="csv-session-picker" hidden>
+                  <label class="field">
+                    <span>강의 세션 선택</span>
+                    <select id="csv-session-select"></select>
+                  </label>
+                  <button class="btn btn-chip" type="button" id="csv-apply">적용</button>
+                </div>
+              </div>
+
+              <div class="field-grid">
+                <label class="field">
+                  <span>course_id</span>
+                  <input
+                    id="field-course_id"
+                    type="text"
+                    name="course_id"
+                    placeholder="예: LEC-2026-001…"
+                    required
+                    autocomplete="off"
+                    aria-describedby="error-course_id"
+                    spellcheck="false"
+                  />
+                  <p class="field-error" id="error-course_id" aria-live="polite"></p>
+                </label>
+                <label class="field">
+                  <span>course_name</span>
+                  <input
+                    id="field-course_name"
+                    type="text"
+                    name="course_name"
+                    placeholder="예: 데이터 리터러시 입문…"
+                    required
+                    autocomplete="off"
+                    aria-describedby="error-course_name"
+                  />
+                  <p class="field-error" id="error-course_name" aria-live="polite"></p>
+                </label>
+                <label class="field">
+                  <span>date</span>
+                  <input id="field-date" type="date" name="date" required autocomplete="off" aria-describedby="error-date" />
+                  <p class="field-error" id="error-date" aria-live="polite"></p>
+                </label>
+                <label class="field">
+                  <span>time</span>
+                  <input
+                    id="field-time"
+                    type="text"
+                    name="time"
+                    placeholder="예: 09:00 ~ 12:00…"
+                    required
+                    autocomplete="off"
+                    aria-describedby="error-time"
+                  />
+                  <p class="field-error" id="error-time" aria-live="polite"></p>
+                </label>
+                <label class="field">
+                  <span>subject</span>
+                  <input
+                    id="field-subject"
+                    type="text"
+                    name="subject"
+                    placeholder="예: 확률과 통계…"
+                    required
+                    autocomplete="off"
+                    aria-describedby="error-subject"
+                  />
+                  <p class="field-error" id="error-subject" aria-live="polite"></p>
+                </label>
+                <label class="field">
+                  <span>content</span>
+                  <textarea
+                    id="field-content"
+                    name="content"
+                    rows="3"
+                    placeholder="예: 확률 분포, 기대값, 분산…"
+                    required
+                    autocomplete="off"
+                    aria-describedby="error-content"
+                  ></textarea>
+                  <p class="field-error" id="error-content" aria-live="polite"></p>
+                </label>
+                <label class="field">
+                  <span>instructor</span>
+                  <input
+                    id="field-instructor"
+                    type="text"
+                    name="instructor"
+                    placeholder="예: 김인사이트…"
+                    required
+                    autocomplete="off"
+                    aria-describedby="error-instructor"
+                  />
+                  <p class="field-error" id="error-instructor" aria-live="polite"></p>
+                </label>
+                <label class="field">
+                  <span>sub_instructor</span>
+                  <input
+                    id="field-sub_instructor"
+                    type="text"
+                    name="sub_instructor"
+                    placeholder="예: 이조교…"
+                    required
+                    autocomplete="off"
+                    aria-describedby="error-sub_instructor"
+                  />
+                  <p class="field-error" id="error-sub_instructor" aria-live="polite"></p>
+                </label>
+              </div>
+            </article>
+          </form>
+
+          <div class="workspace-side">
+            <article class="panel">
+              <div class="panel__head">
+                <div>
+                  <h2>실행 상태</h2>
+                  <p>실제 파이프라인 단계에 맞춰 진행 상황이 이동합니다.</p>
+                </div>
+                <span class="analysis-pill is-idle" id="analysis-pill">대기</span>
+              </div>
+
+              <div class="run-stage">
+                <div class="run-stage__head">
+                  <div>
+                    <strong id="status-live">대기 중…</strong>
+                    <p>분석 시작 버튼을 누르면 상태 polling이 시작됩니다.</p>
+                  </div>
+                  <button class="btn btn-primary" id="start-analysis" type="button">분석 시작</button>
+                </div>
+
+                <div class="progress">
+                  <div class="progress-bar" id="progress-bar"></div>
+                </div>
+
+                <ol class="status-list" id="status-list">
+                  <li data-step="0">NLP 분석 중</li>
+                  <li data-step="1">LLM 분석 중</li>
+                  <li data-step="2">통합 중</li>
+                  <li data-step="3">리포트 생성 중</li>
+                </ol>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel__head">
+                <div>
+                  <h2>실행 로그</h2>
+                  <p>단계 이동과 완료 시점을 빠르게 확인합니다.</p>
+                </div>
+              </div>
+              <ul class="log-list" id="run-log-list">
+                <li>로그가 아직 없습니다.</li>
+              </ul>
+              <div class="workspace-actions">
+                <a class="btn btn-secondary" id="analyze-open-report" href="#" hidden>완료된 리포트 열기</a>
+              </div>
+            </article>
+          </div>
         </div>
       </section>
     </main>
 
     <footer class="site-footer">
-      <p>EduInsightAI · 강의 분석 리포트</p>
+      <p>EduInsightAI · File-based Dashboard MVP</p>
     </footer>
 
     <div class="ui-toast" id="ui-toast" role="status" aria-live="polite"></div>
@@ -503,5 +593,3 @@
     <script src="app.js"></script>
   </body>
 </html>
-
-
