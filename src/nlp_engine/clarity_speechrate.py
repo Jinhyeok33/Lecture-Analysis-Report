@@ -7,8 +7,14 @@ class SpeechRateAnalyzer:
     def __init__(self):
         # 평가 기준 설정
         self.thresholds = [
-            (100, "very_low", 3), (130, "low", 4), (160, "optimal", 5),
-            (180, "high", 4), (200, "very_high", 3), (float('inf'), "excessive", 2)
+            (0, "silent", 0), 
+            (50, "very_low", 3),
+            (100, "very_low", 3), 
+            (130, "low", 4), 
+            (160, "optimal", 5),
+            (180, "high", 4), 
+            (200, "very_high", 3), 
+            (float('inf'), "excessive", 2)
         ]
 
     def _parse_time(self, time_str, last_dt=None):
@@ -22,7 +28,7 @@ class SpeechRateAnalyzer:
         except ValueError:
             return None
 
-    def _analyze_script_with_gaps(self, script_text):
+    def _analyze_script_with_gaps(self, script_text, gap_threshold=20):
         lines = [l for l in script_text.strip().split('\n') if l.strip()]
         if not lines: return 0, 0
 
@@ -33,24 +39,28 @@ class SpeechRateAnalyzer:
         last_dt = None
 
         for line in lines:
+            # 타임스탬프 매칭
             time_match = re.search(time_pattern, line)
-            if not time_match: continue
-            
-            current_time_str = time_match.group(1)
-            current_dt = self._parse_time(current_time_str, last_dt)
-            if not current_dt: continue
-            
-            # 텍스트 정제 및 단어 수 합산
-            content = re.sub(r"<[^>]+>\s+[^\s:]+:\s*", "", line).strip()
-            total_word_count += len(content.split())
 
-            # 1분 이상 침묵 제외 로직
-            if last_dt is not None:
-                gap = (current_dt - last_dt).total_seconds()
-                if gap < 20:
-                    effective_duration_seconds += gap
+            # 1. 시간 누적 로직 (타임스탬프가 있는 줄에서만 실행)
+            if time_match:
+                current_time_str = time_match.group(1)
+                current_dt = self._parse_time(current_time_str, last_dt)
+                
+                if current_dt:
+                    if last_dt is not None:
+                        gap = (current_dt - last_dt).total_seconds()
+                        if gap < gap_threshold:
+                            effective_duration_seconds += gap
+                    last_dt = current_dt
             
-            last_dt = current_dt
+            # 2. 텍스트 정제 및 단어 수 합산 (타임스탬프 유무와 관계없이 매 줄마다 실행)
+            # 메타데이터(<시간> ID: 또는 ) 제거
+            clean_line = re.sub(r"\\s*", "", line)
+            content = re.sub(r"<[^>]+>\s+[^\s:]+:\s*", "", clean_line).strip()
+            
+            if content:
+                total_word_count += len(content.split())
 
         return total_word_count, effective_duration_seconds
 
@@ -61,18 +71,19 @@ class SpeechRateAnalyzer:
 
     def analyze(self, script_text):
         word_count, effective_sec = self._analyze_script_with_gaps(script_text)
+
+        # 유효 시간이 0이거나 텍스트가 없어 wpm이 0이 되는 경우 방어
         effective_min = effective_sec / 60
         wpm = round(word_count / effective_min) if effective_min > 0 else 0
+        
         classification, score = self.get_classification(wpm)
         
         return {
             "concept_clarity_metrics": {
+                "total_words": word_count,
+                "effective_duration_sec": round(effective_sec),
                 "speech_rate_wpm": wpm,
                 "classification": classification,
                 "score": score
-            },
-            "raw_stats": {
-                "total_words": word_count,
-                "effective_duration_sec": round(effective_sec)
             }
         }

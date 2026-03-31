@@ -7,12 +7,14 @@ class InteractionAnalyzer:
         # 외부에서 넘겨받은 kiwi 사용
         self.kiwi = kiwi
         self.min_threshold = min_threshold
-        # 확장된 핵심 어근 세트
-        self.target_roots = {
-            "알다", "이해", "확인", "질문", "되다",
-            "어렵다", "하다", "맞다", "틀리다",
-            "넘어가다", "따라오다", "괜찮다", "궁금하다", "보이다", "들리다"
-        }
+        # 핵심 어근 세트 (형태소 분석기의 token.form 형태에 맞추어 하나에 담는 방식에서 품사별로)
+        # 💡 개선점 1: 품사(POS)별로 타겟 어간을 분리하여 정확도 향상
+        # 명사형 (NNG, NNP 등)
+        self.target_nouns = {"이해", "확인", "질문"}
+        # 동사/형용사 어간 (VV, VA 등)
+        self.target_predicates = {"알", "어렵", "맞", "틀리", "넘어가", "따라오", "괜찮", "궁금하", "보이", "들리"}
+        # 의문형 어미 확장
+        self.question_endings = {"나요", "가요", "어요", "죠", "까", "까요", "시죠"}
 
     def _parse_time(self, time_str, last_dt=None):
         """12시간제 보정 로직을 포함한 시간 문자열 파싱 함수"""
@@ -27,21 +29,42 @@ class InteractionAnalyzer:
             return None
 
     def _is_understanding_question(self, text):
-        """Kiwi를 사용하여 의문형 어미와 핵심 키워드 조합 분석"""
-        # 방어 로직
+        """Kiwi 품사 태깅을 활용한 정밀한 이해 확인 질문 탐지"""
         if not self.kiwi: return False
         
         tokens = self.kiwi.tokenize(text)
-        has_target_root = False
+        has_target_meaning = False
         is_question_form = False
         
+        # '감이 오다' 같은 연어(Collocation) 처리를 위한 상태 변수
+        has_gam = False 
+        
         for token in tokens:
-            if token.form in self.target_roots:
-                has_target_root = True
-            if token.tag in {"EF", "SF"} and ("?" in token.form or token.form in ["나요", "가요", "어요", "죠"]):
-                is_question_form = True
+            form = token.form
+            tag = token.tag
+            
+            # 💡 개선점 2: 품사 태그(tag)를 확인하여 동음이의어 필터링
+            # (예: 먹는 '알(Noun)'과 아는 '알(Verb)' 구분)
+            
+            if tag.startswith('N'): # 명사인 경우
+                if form in self.target_nouns:
+                    has_target_meaning = True
+                elif form == "감":
+                    has_gam = True # '감'이 등장했음을 기록
+                    
+            elif tag.startswith('V'): # 동사/형용사인 경우
+                if form in self.target_predicates:
+                    has_target_meaning = True
+                # 앞에 '감'이 나왔고, 현재 동사가 '오'인 경우 -> "감이 오다"
+                elif has_gam and form == "오": 
+                    has_target_meaning = True
+
+            # 💡 개선점 3: 종결어미(EF) 및 기호(SF) 매칭 로직 강화
+            if tag in {"EF", "SF"}:
+                if "?" in form or any(form.endswith(ending) for ending in self.question_endings):
+                    is_question_form = True
                 
-        return has_target_root and is_question_form
+        return has_target_meaning and is_question_form
 
     def analyze(self, script_text):
         # 방어 로직: Kiwi가 없으면 자체 생성
