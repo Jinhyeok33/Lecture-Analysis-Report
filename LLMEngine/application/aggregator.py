@@ -17,6 +17,15 @@ from LLMEngine.application.prompts import PROMPT_VERSION
 logger = logging.getLogger(__name__)
 
 
+def _flatten_summary(scores: SummaryScores) -> dict[str, float | None]:
+    """SummaryScores를 {item: score} flat dict로 변환한다."""
+    flat: dict[str, float | None] = {}
+    for items in scores.model_dump().values():
+        if isinstance(items, dict):
+            flat.update(items)
+    return flat
+
+
 class ResultAggregator:
     def __init__(self, llm_provider: ILLMProvider) -> None:
         self.llm = llm_provider
@@ -142,13 +151,8 @@ class ResultAggregator:
     def _select_representative_evidences(
         self, chunks: List[ChunkResult], summary_scores: SummaryScores,
     ) -> List[Evidence]:
-        item_scores = [
-            (item, float(val))
-            for cat, items in summary_scores.model_dump().items()
-            if isinstance(items, dict)
-            for item, val in items.items()
-            if val is not None
-        ]
+        flat = _flatten_summary(summary_scores)
+        item_scores = [(item, val) for item, val in flat.items() if val is not None]
         if not item_scores:
             return self._first_per_item(chunks)[:25]
 
@@ -177,18 +181,9 @@ class ResultAggregator:
     @staticmethod
     def _partition_items_by_score(summary_scores: SummaryScores) -> tuple[list[str], list[str]]:
         """3.0 초과 항목(강점 후보)과 3.0 미만 항목(이슈 후보)으로 분리."""
-        strength_items: list[str] = []
-        issue_items: list[str] = []
-        for cat, items in summary_scores.model_dump().items():
-            if not isinstance(items, dict):
-                continue
-            for item, val in items.items():
-                if val is None:
-                    continue
-                if val > 3.0:
-                    strength_items.append(item)
-                elif val < 3.0:
-                    issue_items.append(item)
+        flat = _flatten_summary(summary_scores)
+        strength_items = [item for item, val in flat.items() if val is not None and val > 3.0]
+        issue_items = [item for item, val in flat.items() if val is not None and val < 3.0]
         return strength_items, issue_items
 
     @staticmethod

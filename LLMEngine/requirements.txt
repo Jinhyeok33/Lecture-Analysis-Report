@@ -1,0 +1,16 @@
+# LLMEngine 핵심 의존성
+pydantic>=2.0,<3.0
+python-dotenv>=1.0,<2.0
+
+# LLM SDK (사용 모델에 따라 하나 이상 설치)
+openai>=1.30,<2.0
+google-genai>=1.0,<2.0
+
+# 유사도 검증 (선택 — 미설치 시 difflib fallback)
+rapidfuzz>=3.0,<4.0
+
+# YAML 프롬프트 외부화 (선택 — 미설치 시 코드 내장 프롬프트 사용)
+pyyaml>=6.0,<7.0
+
+# 테스트
+pytest>=8.0,<9.0

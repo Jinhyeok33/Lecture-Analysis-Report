@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
 from typing import List
 
 from LLMEngine.core.schemas import Evidence
+from LLMEngine.core.exceptions import HallucinationError
+from LLMEngine.core.ports import EvidenceValidationDetail
 
 logger = logging.getLogger(__name__)
 
@@ -19,25 +20,10 @@ except ImportError:
     from difflib import SequenceMatcher
     logger.warning("rapidfuzz 미설치 — difflib fallback 사용 (pip install rapidfuzz 권장)")
 
-# 임계값 조정 가이드:
-#   0.90+  : 엄격. false negative 증가, 재시도 비용 상승.
-#   0.80   : 조사·띄어쓰기 변형 허용. 현재 권장값.
-#   0.70-  : 느슨. 환각 통과 위험.
 DEFAULT_SIMILARITY_THRESHOLD = 0.80
 
 HALLUCINATION_MIN_PASS_RATIO = 0.5
 HALLUCINATION_MAX_EFFECTIVE_REQUEST = 6
-
-
-@dataclass
-class EvidenceValidationDetail:
-    """validate_evidence 반환 객체. 신뢰도 산출에 필요한 세부 지표를 포함."""
-    passed: List[Evidence]
-    total_requested: int = 0
-    total_passed: int = 0
-    pass_ratio: float = 1.0
-    similarity_scores: List[float] = field(default_factory=list)
-    avg_similarity: float = 100.0
 
 
 def normalize_text(text: str) -> str:
@@ -89,7 +75,10 @@ def validate_evidence(
     max_effective_request: int = HALLUCINATION_MAX_EFFECTIVE_REQUEST,
 ) -> EvidenceValidationDetail:
     if not evidence_list:
-        return EvidenceValidationDetail(passed=[])
+        return EvidenceValidationDetail(
+            passed=[], total_requested=0, total_passed=0,
+            pass_ratio=0.0, similarity_scores=[], avg_similarity=0.0,
+        )
 
     threshold_100 = DEFAULT_SIMILARITY_THRESHOLD * 100
     passed: List[Evidence] = []
@@ -107,7 +96,7 @@ def validate_evidence(
     pass_ratio = min(raw_ratio, 1.0)
 
     if len(passed) == 0 or raw_ratio < min_pass_ratio:
-        raise ValueError(
+        raise HallucinationError(
             "환각 감지: 원문에서 찾을 수 없는 인용이 많습니다 "
             f"(통과={len(passed)}, 요청={requested}, 판정요청={effective_requested}). "
             "인용 추출을 더 엄격히 한 뒤 재시도하세요."

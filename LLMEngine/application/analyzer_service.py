@@ -9,6 +9,7 @@ import re
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Any
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -23,11 +24,9 @@ from LLMEngine.core.schemas import (
 )
 from LLMEngine.application.chunk_processor import ChunkProcessor
 from LLMEngine.application.aggregator import ResultAggregator
+from LLMEngine.core.exceptions import RefusalError, NonRetryableAPIError
 
 logger = logging.getLogger(__name__)
-
-_REPO_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="repo_writer")
-_ASYNC_FALLBACK_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="async_fallback")
 
 NA_FIRST_CHUNK_ONLY = frozenset({"learning_objective_intro", "previous_lesson_linkage"})
 NA_LAST_CHUNK_ONLY = frozenset({"closing_summary"})
@@ -62,12 +61,21 @@ def get_lecture_id_with_run_number(output_dir: Path, base_lecture_id: str) -> st
     return f"{base_lecture_id}_{max(run_numbers) + 1:02d}"
 
 
-def _classify_failure(error_str: str) -> tuple[ChunkStatus, FailureClass | None]:
-    lower = error_str.lower()
-    if "거부함" in error_str or "refusal" in lower or "모델 거부" in error_str:
+def _classify_failure_exc(exc: BaseException) -> tuple[ChunkStatus, FailureClass | None]:
+    """예외 타입을 기반으로 ChunkStatus/FailureClass를 분류한다."""
+    if isinstance(exc, RefusalError):
         return ChunkStatus.REFUSED, None
-    if "재시도 불가" in error_str or "authentication" in lower or "insufficient_quota" in lower:
+    if isinstance(exc, NonRetryableAPIError):
         return ChunkStatus.FAILED, FailureClass.NON_RETRYABLE
+    if isinstance(exc, TimeoutError):
+        return ChunkStatus.TIMED_OUT, FailureClass.RETRYABLE
+    # RuntimeError wrapping (재시도 소진 등)은 cause 를 확인
+    cause = getattr(exc, "__cause__", None)
+    if cause is not None:
+        if isinstance(cause, RefusalError):
+            return ChunkStatus.REFUSED, None
+        if isinstance(cause, NonRetryableAPIError):
+            return ChunkStatus.FAILED, FailureClass.NON_RETRYABLE
     return ChunkStatus.FAILED, FailureClass.RETRYABLE
 
 
@@ -83,6 +91,22 @@ class LectureAnalyzerService:
         self.repo = repository
         self.chunker = ChunkProcessor()
         self.aggregator = ResultAggregator(self.llm)
+        self._repo_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="repo_writer")
+        self._fallback_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="async_fallback")
+        self._closed = False
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._repo_executor.shutdown(wait=False)
+        self._fallback_executor.shutdown(wait=False)
+
+    def __enter__(self) -> LectureAnalyzerService:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
 
     # ── 전처리 ───────────────────────────────────────────────────────
 
@@ -92,7 +116,9 @@ class LectureAnalyzerService:
             return list(chunks)
         out: list[ChunkMetadata] = [chunks[0]]
         for i in range(1, len(chunks)):
-            tail = chunks[i - 1].text[-PREVIOUS_CHUNK_TAIL_MAX_CHARS:]
+            raw_tail = chunks[i - 1].text[-PREVIOUS_CHUNK_TAIL_MAX_CHARS:]
+            newline_pos = raw_tail.find("\n")
+            tail = raw_tail[newline_pos + 1:] if newline_pos >= 0 else raw_tail
             out.append(chunks[i].model_copy(update={"previous_chunk_tail": tail or None}))
         return out
 
@@ -158,6 +184,20 @@ class LectureAnalyzerService:
             ),
         )
 
+    # ── 공통 에러 → fallback ─────────────────────────────────────────
+
+    def _failure_to_fallback(
+        self, chunk: ChunkMetadata, exc: BaseException, lecture_id: str,
+    ) -> ChunkResult:
+        """예외를 분류하고 fallback 결과를 생성한다. 로깅 포함."""
+        error_str = str(exc) or type(exc).__name__
+        status, fc = _classify_failure_exc(exc)
+        logger.error("lecture_id=%s chunk_id=%d %s: %s",
+                     lecture_id, chunk.chunk_id, type(exc).__name__, error_str)
+        return self._get_fallback_result(
+            chunk, failure_reason=error_str, status=status, failure_class=fc,
+        )
+
     # ── 체크포인트 공통 로직 ────────────────────────────────────────
 
     def _resume_checkpoint(
@@ -180,6 +220,21 @@ class LectureAnalyzerService:
 
     # ── 동기 처리 ────────────────────────────────────────────────────
 
+    def _run_async_batch(
+        self, lecture_id: str, pending: list[ChunkMetadata], max_concurrency: int,
+    ) -> list[ChunkResult]:
+        """async 청크 배치를 sync 컨텍스트에서 실행한다."""
+        coro = self._process_chunks_async(lecture_id, pending, max_concurrency)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            timeout = self.config.api_timeout_s * len(pending) * (self.config.max_retries + 1)
+            return self._fallback_executor.submit(asyncio.run, coro).result(timeout=timeout)
+        return asyncio.run(coro)
+
     def process_chunks(
         self,
         lecture_id: str,
@@ -193,26 +248,9 @@ class LectureAnalyzerService:
 
         if pending:
             if use_async:
-                logger.info(
-                    "lecture_id=%s stage=batch pending=%d concurrency=%d",
-                    lecture_id, len(pending), max_concurrency,
-                )
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = None
-
-                if loop and loop.is_running():
-                    def _run():
-                        return asyncio.run(
-                            self._process_chunks_async(lecture_id, pending, max_concurrency),
-                        )
-                    new = _ASYNC_FALLBACK_EXECUTOR.submit(_run).result()
-                else:
-                    new = asyncio.run(
-                        self._process_chunks_async(lecture_id, pending, max_concurrency),
-                    )
-                for r in new:
+                logger.info("lecture_id=%s stage=batch pending=%d concurrency=%d",
+                            lecture_id, len(pending), max_concurrency)
+                for r in self._run_async_batch(lecture_id, pending, max_concurrency):
                     results_map[r.chunk_id] = r
             else:
                 logger.info("lecture_id=%s stage=batch_sync pending=%d", lecture_id, len(pending))
@@ -228,19 +266,11 @@ class LectureAnalyzerService:
                         ))
                         results_map[chunk.chunk_id] = res
                     except Exception as e:
-                        error_str = str(e)
-                        status, fc = _classify_failure(error_str)
                         self.repo.save_chunk_state(ChunkStateRecord(
                             lecture_id=lecture_id, chunk_id=chunk.chunk_id,
-                            status="FAILED", failure_reason=error_str,
+                            status="FAILED", failure_reason=str(e),
                         ))
-                        logger.error(
-                            "lecture_id=%s chunk_id=%d %s: %s",
-                            lecture_id, chunk.chunk_id, type(e).__name__, error_str,
-                        )
-                        results_map[chunk.chunk_id] = self._get_fallback_result(
-                            chunk, failure_reason=error_str, status=status, failure_class=fc,
-                        )
+                        results_map[chunk.chunk_id] = self._failure_to_fallback(chunk, e, lecture_id)
 
         return self._finalize(chunks, results_map)
 
@@ -253,7 +283,7 @@ class LectureAnalyzerService:
         loop = asyncio.get_running_loop()
 
         async def _save(record: ChunkStateRecord) -> None:
-            await loop.run_in_executor(_REPO_EXECUTOR, self.repo.save_chunk_state, record)
+            await loop.run_in_executor(self._repo_executor, self.repo.save_chunk_state, record)
 
         async def analyze_one(chunk: ChunkMetadata) -> ChunkResult:
             async with sem:
@@ -273,31 +303,12 @@ class LectureAnalyzerService:
                         status="FAILED", failure_reason="CancelledError",
                     ))
                     raise
-                except TimeoutError as e:
-                    error_str = str(e) or "API 호출 타임아웃"
-                    await _save(ChunkStateRecord(
-                        lecture_id=lecture_id, chunk_id=chunk.chunk_id,
-                        status="FAILED", failure_reason=error_str,
-                    ))
-                    logger.warning("lecture_id=%s chunk_id=%d TimeoutError", lecture_id, chunk.chunk_id)
-                    return self._get_fallback_result(
-                        chunk, failure_reason=error_str,
-                        status=ChunkStatus.TIMED_OUT, failure_class=FailureClass.RETRYABLE,
-                    )
                 except Exception as e:
-                    error_str = str(e)
-                    status, fc = _classify_failure(error_str)
                     await _save(ChunkStateRecord(
                         lecture_id=lecture_id, chunk_id=chunk.chunk_id,
-                        status="FAILED", failure_reason=error_str,
+                        status="FAILED", failure_reason=str(e),
                     ))
-                    logger.error(
-                        "lecture_id=%s chunk_id=%d %s: %s",
-                        lecture_id, chunk.chunk_id, type(e).__name__, error_str,
-                    )
-                    return self._get_fallback_result(
-                        chunk, failure_reason=error_str, status=status, failure_class=fc,
-                    )
+                    return self._failure_to_fallback(chunk, e, lecture_id)
 
         raw = await asyncio.gather(*[analyze_one(c) for c in chunks], return_exceptions=True)
 
@@ -305,14 +316,10 @@ class LectureAnalyzerService:
             if isinstance(r, asyncio.CancelledError):
                 raise asyncio.CancelledError()
 
-        final: list[ChunkResult] = []
-        for chunk, r in zip(chunks, raw):
-            if isinstance(r, BaseException):
-                status, fc = _classify_failure(str(r))
-                final.append(self._get_fallback_result(chunk, str(r), status=status, failure_class=fc))
-            else:
-                final.append(r)
-        return final
+        return [
+            self._failure_to_fallback(chunk, r, lecture_id) if isinstance(r, BaseException) else r
+            for chunk, r in zip(chunks, raw)
+        ]
 
     # ── Public async API ─────────────────────────────────────────────
 
@@ -324,10 +331,8 @@ class LectureAnalyzerService:
         results_map, pending = self._resume_checkpoint(lecture_id, chunks)
 
         if pending:
-            logger.info(
-                "lecture_id=%s stage=batch_async pending=%d concurrency=%d",
-                lecture_id, len(pending), max_concurrency,
-            )
+            logger.info("lecture_id=%s stage=batch_async pending=%d concurrency=%d",
+                        lecture_id, len(pending), max_concurrency)
             for r in await self._process_chunks_async(lecture_id, pending, max_concurrency):
                 results_map[r.chunk_id] = r
 
@@ -363,6 +368,21 @@ class LectureAnalyzerService:
 
     # ── 파일 저장 ────────────────────────────────────────────────────
 
+    @staticmethod
+    def _atomic_write_json(path: Path, data: Any) -> None:
+        """tmp → rename 패턴으로 atomic write."""
+        tmp = path.with_suffix(".tmp")
+        try:
+            tmp.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            tmp.replace(path)
+        except Exception:
+            if tmp.exists():
+                tmp.unlink(missing_ok=True)
+            raise
+
     def save_files(
         self, chunk_results: list[ChunkResult], aggregated: AggregatedResult,
         output_dir: str | Path, lecture_id: str,
@@ -372,10 +392,8 @@ class LectureAnalyzerService:
         chunks_path = out / f"{lecture_id}_chunks.json"
         summary_path = out / f"{lecture_id}_summary.json"
 
-        with chunks_path.open("w", encoding="utf-8") as f:
-            json.dump([c.model_dump(mode="json") for c in chunk_results], f, ensure_ascii=False, indent=2)
-        with summary_path.open("w", encoding="utf-8") as f:
-            json.dump(aggregated.model_dump(mode="json"), f, ensure_ascii=False, indent=2)
+        self._atomic_write_json(chunks_path, [c.model_dump(mode="json") for c in chunk_results])
+        self._atomic_write_json(summary_path, aggregated.model_dump(mode="json"))
         return chunks_path, summary_path
 
     def run(

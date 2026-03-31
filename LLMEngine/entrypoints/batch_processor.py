@@ -14,6 +14,8 @@ import time
 from pathlib import Path
 from typing import Dict
 
+from LLMEngine.core.config import LLMEngineConfig
+from LLMEngine.core.logging_config import set_trace_id
 from LLMEngine.core.schemas import AggregatedResult
 from LLMEngine.application.analyzer_service import (
     LectureAnalyzerService, normalize_lecture_id, get_lecture_id_with_run_number,
@@ -46,12 +48,15 @@ class BatchProcessor:
             base_id = normalize_lecture_id(path.stem)
             lecture_id = get_lecture_id_with_run_number(out, base_id)
             file_t0 = time.perf_counter()
-            logger.info("stage=start file=%s lecture_id=%s", path.name, lecture_id)
+            trace_id = set_trace_id()
+            logger.info("stage=start file=%s lecture_id=%s trace_id=%s", path.name, lecture_id, trace_id)
 
             try:
                 chunk_results, aggregated = self.service.process_lecture(
                     lecture_id, path, max_concurrency=max_concurrency,
                 )
+                file_elapsed_ms = int((time.perf_counter() - file_t0) * 1000)
+                aggregated.run_metadata.total_elapsed_ms = file_elapsed_ms
                 self.service.save_files(chunk_results, aggregated, out, lecture_id)
 
                 meta = aggregated.run_metadata
@@ -61,7 +66,7 @@ class BatchProcessor:
                     "reliability=%.4f",
                     path.name, lecture_id, meta.total_chunks,
                     meta.successful_chunks, meta.fallback_chunks, meta.failed_chunks,
-                    int((time.perf_counter() - file_t0) * 1000),
+                    file_elapsed_ms,
                     meta.token_usage.total_tokens, meta.token_usage.estimated_cost_usd,
                     meta.reliability.overall_reliability_score,
                 )
@@ -139,11 +144,10 @@ if __name__ == "__main__":
     from LLMEngine.infrastructure.llm.openai_adapter import OpenAIAdapter
     from LLMEngine.infrastructure.persistence.json_repo import LocalJsonRepository
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    from LLMEngine.core.logging_config import setup_logging
+
+    use_json = os.getenv("LLM_LOG_FORMAT", "").strip().lower() == "json"
+    setup_logging(level=os.getenv("LLM_LOG_LEVEL", "INFO"), json_format=use_json)
 
     parser = argparse.ArgumentParser(description="강의 스크립트 배치 처리기")
     parser.add_argument("--input", "-i", default="dataset/강의 스크립트")
@@ -151,19 +155,45 @@ if __name__ == "__main__":
     parser.add_argument("--max_concurrency", "-c", type=int, default=1)
     parser.add_argument("--file", "-f", type=str)
     parser.add_argument("--latest", "-l", action="store_true")
+    parser.add_argument(
+        "--repo", choices=["json", "sqlite"], default="json",
+        help="체크포인트 저장소 (json: 파일 기반, sqlite: DB 기반)",
+    )
     args = parser.parse_args()
 
     backend = os.getenv("LLM_BACKEND", "").strip().lower()
     has_gemini = bool(os.getenv("GEMINI_API_KEY", "").strip())
     has_openai = bool(os.getenv("OPENAI_API_KEY", "").strip())
 
+    config = LLMEngineConfig.from_env()
+
     if backend == "gemini" or (has_gemini and not has_openai):
         from LLMEngine.infrastructure.llm.gemini_adapter import GeminiAdapter
-        llm_provider = GeminiAdapter()
+        llm_provider = GeminiAdapter(
+            max_retries=config.max_retries,
+            retry_base_delay=config.retry_base_delay,
+            api_timeout_s=config.api_timeout_s,
+            max_completion_tokens=config.max_completion_tokens,
+            temperature=config.temperature,
+        )
     else:
-        llm_provider = OpenAIAdapter()
+        llm_provider = OpenAIAdapter(
+            model=config.model,
+            max_retries=config.max_retries,
+            retry_base_delay=config.retry_base_delay,
+            api_timeout_s=config.api_timeout_s,
+            max_completion_tokens=config.max_completion_tokens,
+            temperature=config.temperature,
+            seed=config.seed,
+        )
 
-    service = LectureAnalyzerService(llm_provider, LocalJsonRepository())
+    if args.repo == "sqlite":
+        from LLMEngine.infrastructure.persistence.sqlite_repo import SQLiteRepository
+        repository = SQLiteRepository(db_path="./checkpoints.db")
+    else:
+        repository = LocalJsonRepository()
+
+    service = LectureAnalyzerService(llm_provider, repository, config=config)
     processor = BatchProcessor(service)
 
     try:
@@ -183,5 +213,5 @@ if __name__ == "__main__":
         if hasattr(llm_provider, "close"):
             try:
                 asyncio.run(llm_provider.close())
-            except RuntimeError:
+            except (RuntimeError, Exception):
                 pass

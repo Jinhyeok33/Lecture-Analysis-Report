@@ -12,15 +12,27 @@ from collections import Counter
 from decimal import Decimal
 from typing import Any, List, Tuple
 
-from rapidfuzz import fuzz as _rfuzz
+try:
+    from rapidfuzz import fuzz as _rfuzz
+    _HAS_RAPIDFUZZ = True
+except ImportError:
+    _HAS_RAPIDFUZZ = False
+    from difflib import SequenceMatcher as _SequenceMatcher
 
-from LLMEngine.core.ports import ILLMProvider
+from LLMEngine.core.ports import (
+    ILLMProvider, EvidenceValidationDetail,
+    EvidenceValidator, AggregatorPromptBuilder,
+)
 from LLMEngine.core.schemas import (
     ChunkMetadata, ChunkResult, ChunkScores, ChunkStatus, Evidence,
     LLMInternalResponse, ReliabilityMetrics, RefinedList, TokenUsage,
+    NA_CAPABLE_ITEMS,
 )
-from LLMEngine.application.prompts import build_aggregator_refine_prompt
-from LLMEngine.application.validation import EvidenceValidationDetail, validate_evidence
+from LLMEngine.core.exceptions import (
+    RefusalError, HallucinationError, LanguageViolationError,
+    CotMismatchError, TruncatedResponseError, NonRetryableAPIError,
+)
+from LLMEngine.core.metrics import get_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +47,23 @@ def _contains_english_sentences(text: str) -> bool:
     return bool(_ENGLISH_SENTENCE_RE.search(text))
 
 
-class RefusalError(RuntimeError):
-    """모델이 요청을 거부 — 재시도 불가, 입력/프롬프트 수정 필요."""
+def _flatten_scores(scores: ChunkScores) -> dict[str, int | None]:
+    """ChunkScores를 {item: score} flat dict로 변환한다."""
+    flat: dict[str, int | None] = {}
+    for cat in scores.model_dump().values():
+        if isinstance(cat, dict):
+            flat.update(cat)
+    return flat
+
+
+def _default_evidence_validator() -> EvidenceValidator:
+    from LLMEngine.application.validation import validate_evidence
+    return validate_evidence
+
+
+def _default_prompt_builder() -> AggregatorPromptBuilder:
+    from LLMEngine.application.prompts import build_aggregator_refine_prompt
+    return build_aggregator_refine_prompt
 
 
 class BaseLLMAdapter(ILLMProvider, abc.ABC):
@@ -50,12 +77,20 @@ class BaseLLMAdapter(ILLMProvider, abc.ABC):
         max_retries: int = 3,
         retry_base_delay: float = 1.0,
         api_timeout_s: float = 120.0,
+        temperature: float = 1.0,
+        seed: int | None = None,
+        evidence_validator: EvidenceValidator | None = None,
+        aggregator_prompt_builder: AggregatorPromptBuilder | None = None,
     ) -> None:
         self.model = model
         self.dedup_model = dedup_model
         self.max_retries = max_retries
         self.retry_base_delay = retry_base_delay
         self.api_timeout_s = api_timeout_s
+        self.temperature = temperature
+        self.seed = seed
+        self._validate_evidence = evidence_validator or _default_evidence_validator()
+        self._build_aggregator_prompt = aggregator_prompt_builder or _default_prompt_builder()
 
     @property
     def model_name(self) -> str:
@@ -91,6 +126,12 @@ class BaseLLMAdapter(ILLMProvider, abc.ABC):
     async def close(self) -> None:
         """비동기 리소스 해제. 필요 시 서브클래스에서 오버라이드."""
 
+    async def __aenter__(self) -> BaseLLMAdapter:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        await self.close()
+
     # ── Public API ───────────────────────────────────────────────────
 
     @staticmethod
@@ -100,18 +141,11 @@ class BaseLLMAdapter(ILLMProvider, abc.ABC):
         hallucination_retries: int,
     ) -> ReliabilityMetrics:
         evidence_items = {e.item for e in detail.passed}
-        non_default = 0
-        matched = 0
-        for cat_scores in scores.model_dump().values():
-            if not isinstance(cat_scores, dict):
-                continue
-            for item, val in cat_scores.items():
-                if val is None or val == 3:
-                    continue
-                non_default += 1
-                if item in evidence_items:
-                    matched += 1
-        consistency = matched / non_default if non_default > 0 else 1.0
+        flat = _flatten_scores(scores)
+        scored = [(item, val) for item, val in flat.items() if val is not None]
+        scored_items = len(scored)
+        matched = sum(1 for item, _ in scored if item in evidence_items)
+        consistency = matched / scored_items if scored_items > 0 else 1.0
 
         overall = (
             0.35 * detail.pass_ratio
@@ -137,57 +171,152 @@ class BaseLLMAdapter(ILLMProvider, abc.ABC):
         reliability: ReliabilityMetrics,
     ) -> ChunkResult:
         p = parsed.final_output
+        score_map = _flatten_scores(p.scores)
+        cleaned_evidence = [
+            e for e in detail.passed
+            if score_map.get(e.item) is not None and score_map[e.item] != 3
+        ]
+
         return ChunkResult(
             chunk_id=chunk_data.chunk_id,
             start_time=chunk_data.start_time, end_time=chunk_data.end_time,
             scores=p.scores, strengths=p.strengths, issues=p.issues,
-            evidence=detail.passed, status=ChunkStatus.SUCCESS, is_fallback=False,
+            evidence=cleaned_evidence, status=ChunkStatus.SUCCESS, is_fallback=False,
             retry_count=retry_count, token_usage=usage,
             reliability=reliability,
         )
 
     def analyze_chunk(self, chunk_data: ChunkMetadata) -> ChunkResult:
+        t0 = time.perf_counter()
         parsed, retry_count, usage, detail, h_retries = self._request_structured(chunk_data)
+        elapsed_ms = int((time.perf_counter() - t0) * 1000)
         reliability = self._compute_reliability(detail, parsed.final_output.scores, h_retries)
-        return self._build_success_result(chunk_data, parsed, detail, retry_count, usage, reliability)
+        result = self._build_success_result(chunk_data, parsed, detail, retry_count, usage, reliability)
+        result.elapsed_ms = elapsed_ms
+        return result
 
     async def analyze_chunk_async(self, chunk_data: ChunkMetadata) -> ChunkResult:
+        t0 = time.perf_counter()
         parsed, retry_count, usage, detail, h_retries = await self._request_structured_async(chunk_data)
+        elapsed_ms = int((time.perf_counter() - t0) * 1000)
         reliability = self._compute_reliability(detail, parsed.final_output.scores, h_retries)
-        return self._build_success_result(chunk_data, parsed, detail, retry_count, usage, reliability)
+        result = self._build_success_result(chunk_data, parsed, detail, retry_count, usage, reliability)
+        result.elapsed_ms = elapsed_ms
+        return result
 
     def aggregate_results(
         self, items: List[str], label: str, scores_context: str, trends: str,
+        max_aggregate_retries: int = 3,
     ) -> Tuple[List[str], TokenUsage]:
-        user_content = build_aggregator_refine_prompt(
+        user_content = self._build_aggregator_prompt(
             items[:AGGREGATOR_MAX_ITEMS], label, scores_context, trends,
         )
-        try:
-            response = self._call_aggregate_sync(user_content)
-            result_items = self._parse_aggregate_response(response).items
-            usage = self._build_single_usage(response)
-        except Exception as e:
-            logger.warning("LLM 통합 요약 실패 (%s); 어휘 기반 중복 제거로 대체.", e)
-            return self._normalize_count([], items), TokenUsage()
+        last_error: Exception | None = None
+        for attempt in range(1, max_aggregate_retries + 1):
+            try:
+                response = self._call_aggregate_sync(user_content)
+                result_items = self._parse_aggregate_response(response).items
+                usage = self._build_single_usage(response)
+                return self._normalize_count(result_items, items), usage
+            except (RefusalError, NonRetryableAPIError) as e:
+                logger.error("LLM 통합 요약 복구 불가 오류 (%s): %s", type(e).__name__, e)
+                raise
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    "LLM 통합 요약 attempt=%d/%d 실패 (%s): %s",
+                    attempt, max_aggregate_retries, type(e).__name__, e,
+                )
+                if attempt < max_aggregate_retries:
+                    time.sleep(self._backoff(attempt))
 
-        return self._normalize_count(result_items, items), usage
+        logger.warning("LLM 통합 요약 %d회 시도 후 실패; 어휘 기반 중복 제거로 대체. 마지막 오류: %s",
+                       max_aggregate_retries, last_error)
+        return self._normalize_count([], items), TokenUsage()
 
-    # ── Sync retry loop ──────────────────────────────────────────────
+    # ── Validation (공통) ────────────────────────────────────────────
 
     @staticmethod
     def _check_language(parsed: LLMInternalResponse) -> None:
-        """응답에 영어 문장이 섞여 있으면 ValueError를 발생시켜 재시도한다."""
-        texts_to_check: list[str] = []
+        """응답에 영어 문장이 섞여 있으면 LanguageViolationError를 raise한다."""
         p = parsed.final_output
-        texts_to_check.extend(p.strengths or [])
-        texts_to_check.extend(p.issues or [])
-        for ev in (p.evidence or []):
-            texts_to_check.append(ev.reason)
-        for t in texts_to_check:
+        texts = [
+            *(p.strengths or []),
+            *(p.issues or []),
+            *(ev.reason for ev in (p.evidence or [])),
+            *(cot.anchor for cot in parsed.cot),
+        ]
+        for t in texts:
             if _contains_english_sentences(t):
-                raise ValueError(
+                raise LanguageViolationError(
                     f"언어 위반 감지: 응답에 영어 문장 혼입 — '{t[:80]}...'"
                 )
+
+    @staticmethod
+    def _validate_cot_consistency(parsed: LLMInternalResponse) -> None:
+        """CoT 점수와 final_output 점수의 정합성을 검증한다."""
+        cot_scores = {ev.item: ev.score for ev in parsed.cot}
+        final_flat = _flatten_scores(parsed.final_output.scores)
+
+        mismatches = [
+            f"{item}: CoT={cot_val} ≠ output={final_flat.get(item)}"
+            for item, cot_val in cot_scores.items()
+            if not (cot_val is None and final_flat.get(item) is None)
+            and cot_val != final_flat.get(item)
+        ]
+        if mismatches:
+            raise CotMismatchError(
+                f"CoT 정합성 위반 감지 ({len(mismatches)}건): "
+                + "; ".join(mismatches[:5])
+            )
+
+    def _validate_parsed(
+        self, response: Any, chunk_data: ChunkMetadata,
+    ) -> Tuple[LLMInternalResponse, EvidenceValidationDetail]:
+        """파싱 → 언어 → CoT → evidence 검증을 순차 수행한다."""
+        parsed = self._parse_structured_response(response)
+        self._check_language(parsed)
+        self._validate_cot_consistency(parsed)
+        detail = self._validate_evidence(parsed.final_output.evidence, chunk_data.text)
+        return parsed, detail
+
+    # ── Retry error handling (공통) ───────────────────────────────────
+
+    def _handle_retry_error(
+        self, exc: Exception, chunk_id: int, attempt: int,
+    ) -> None:
+        """재시도 불가 예외는 즉시 raise, 그 외는 로깅만 수행한다.
+
+        Raises:
+            NonRetryableAPIError: TruncatedResponseError 또는 _should_not_retry 판정 시
+            RuntimeError: RefusalError wrapping
+        """
+        if isinstance(exc, RefusalError):
+            logger.error("chunk_id=%02d attempt=%d refusal: %s", chunk_id, attempt, exc)
+            raise RuntimeError(f"재시도 불가 — 모델 거부: {exc}") from exc
+
+        if isinstance(exc, TruncatedResponseError):
+            logger.error("chunk_id=%02d attempt=%d 응답 잘림: %s", chunk_id, attempt, exc)
+            raise NonRetryableAPIError(f"재시도 불가 — 응답 잘림: {exc}") from exc
+
+        if isinstance(exc, HallucinationError):
+            logger.warning("chunk_id=%02d attempt=%d 환각 감지: %s", chunk_id, attempt, exc)
+            return
+
+        if isinstance(exc, (LanguageViolationError, CotMismatchError, TimeoutError)):
+            label = "TimeoutError (%.1fs)" % self.api_timeout_s if isinstance(exc, TimeoutError) else type(exc).__name__
+            logger.warning("chunk_id=%02d attempt=%d %s: %s", chunk_id, attempt, label, exc)
+            return
+
+        if self._should_not_retry(exc):
+            logger.error("chunk_id=%02d attempt=%d %s retryable=False: %s",
+                         chunk_id, attempt, type(exc).__name__, exc)
+            raise NonRetryableAPIError(f"재시도 불가 오류: {exc}") from exc
+
+        logger.warning("chunk_id=%02d attempt=%d %s: %s",
+                       chunk_id, attempt, type(exc).__name__, exc)
+
+    # ── Sync retry loop ──────────────────────────────────────────────
 
     def _request_structured(
         self, chunk_data: ChunkMetadata,
@@ -202,36 +331,13 @@ class BaseLLMAdapter(ILLMProvider, abc.ABC):
                 response = self._call_chunk_sync(chunk_data)
                 elapsed = time.perf_counter() - t0
                 accumulated = self._accum(accumulated, response, elapsed, chunk_data.chunk_id, attempt)
-                parsed = self._parse_structured_response(response)
-                self._check_language(parsed)
-                detail = validate_evidence(parsed.final_output.evidence, chunk_data.text)
+                parsed, detail = self._validate_parsed(response, chunk_data)
                 return parsed, attempt - 1, accumulated, detail, hallucination_retries
-
-            except RefusalError as exc:
-                logger.error("chunk_id=%02d attempt=%d refusal: %s", chunk_data.chunk_id, attempt, exc)
-                raise RuntimeError(f"재시도 불가 — 모델 거부: {exc}") from exc
-
-            except ValueError as exc:
-                msg = str(exc)
-                retryable = "환각 감지" in msg or "언어 위반 감지" in msg
-                if not retryable:
-                    raise
-                if "환각 감지" in msg:
-                    hallucination_retries += 1
-                last_error = exc
-                logger.warning("chunk_id=%02d attempt=%d 검증 실패 (h_retry=%d): %s",
-                               chunk_data.chunk_id, attempt, hallucination_retries, exc)
-                if attempt < self.max_retries:
-                    time.sleep(self._backoff(attempt))
-
             except Exception as exc:
+                if isinstance(exc, HallucinationError):
+                    hallucination_retries += 1
+                self._handle_retry_error(exc, chunk_data.chunk_id, attempt)
                 last_error = exc
-                if self._should_not_retry(exc):
-                    logger.error("chunk_id=%02d attempt=%d %s retryable=False: %s",
-                                 chunk_data.chunk_id, attempt, type(exc).__name__, exc)
-                    raise RuntimeError(f"재시도 불가 오류: {exc}") from exc
-                logger.warning("chunk_id=%02d attempt=%d %s: %s",
-                               chunk_data.chunk_id, attempt, type(exc).__name__, exc)
                 if attempt < self.max_retries:
                     time.sleep(self._backoff(attempt))
 
@@ -255,52 +361,17 @@ class BaseLLMAdapter(ILLMProvider, abc.ABC):
                 accumulated = self._accum(
                     accumulated, response, elapsed, chunk_data.chunk_id, attempt, is_async=True,
                 )
-                parsed = self._parse_structured_response(response)
-                self._check_language(parsed)
-                detail = validate_evidence(parsed.final_output.evidence, chunk_data.text)
+                parsed, detail = self._validate_parsed(response, chunk_data)
                 return parsed, attempt - 1, accumulated, detail, hallucination_retries
-
             except asyncio.CancelledError:
-                logger.warning(
-                    "chunk_id=%02d attempt=%d CancelledError — 재전파",
-                    chunk_data.chunk_id, attempt,
-                )
+                logger.warning("chunk_id=%02d attempt=%d CancelledError — 재전파",
+                               chunk_data.chunk_id, attempt)
                 raise
-
-            except RefusalError as exc:
-                logger.error("chunk_id=%02d attempt=%d refusal: %s", chunk_data.chunk_id, attempt, exc)
-                raise RuntimeError(f"재시도 불가 — 모델 거부: {exc}") from exc
-
-            except TimeoutError as exc:
-                last_error = exc
-                logger.warning(
-                    "chunk_id=%02d attempt=%d TimeoutError (%.1fs)",
-                    chunk_data.chunk_id, attempt, self.api_timeout_s,
-                )
-                if attempt < self.max_retries:
-                    await asyncio.sleep(self._backoff(attempt))
-
-            except ValueError as exc:
-                msg = str(exc)
-                retryable = "환각 감지" in msg or "언어 위반 감지" in msg
-                if not retryable:
-                    raise
-                if "환각 감지" in msg:
-                    hallucination_retries += 1
-                last_error = exc
-                logger.warning("chunk_id=%02d attempt=%d 검증 실패 (h_retry=%d): %s",
-                               chunk_data.chunk_id, attempt, hallucination_retries, exc)
-                if attempt < self.max_retries:
-                    await asyncio.sleep(self._backoff(attempt))
-
             except Exception as exc:
+                if isinstance(exc, HallucinationError):
+                    hallucination_retries += 1
+                self._handle_retry_error(exc, chunk_data.chunk_id, attempt)
                 last_error = exc
-                if self._should_not_retry(exc):
-                    logger.error("chunk_id=%02d attempt=%d %s retryable=False: %s",
-                                 chunk_data.chunk_id, attempt, type(exc).__name__, exc)
-                    raise RuntimeError(f"재시도 불가 오류: {exc}") from exc
-                logger.warning("chunk_id=%02d attempt=%d %s: %s",
-                               chunk_data.chunk_id, attempt, type(exc).__name__, exc)
                 if attempt < self.max_retries:
                     await asyncio.sleep(self._backoff(attempt))
 
@@ -329,6 +400,10 @@ class BaseLLMAdapter(ILLMProvider, abc.ABC):
             int(elapsed_s * 1000), result.prompt_tokens, result.completion_tokens,
             str(result.estimated_cost_usd),
         )
+        metrics = get_metrics()
+        metrics.observe("llm_call_duration_s", elapsed_s, chunk_id=str(chunk_id))
+        metrics.observe("llm_call_cost_usd", float(cost), model=self.model)
+        metrics.increment("llm_call_total", model=self.model)
         return result
 
     def _build_single_usage(self, response: Any) -> TokenUsage:
@@ -362,7 +437,14 @@ class BaseLLMAdapter(ILLMProvider, abc.ABC):
         threshold_100 = self.similarity_threshold * 100
         result: List[str] = []
         for candidate, _ in ranked:
-            if any(_rfuzz.ratio(candidate, e) >= threshold_100 for e in result):
+            if _HAS_RAPIDFUZZ:
+                is_dup = any(_rfuzz.ratio(candidate, e) >= threshold_100 for e in result)
+            else:
+                is_dup = any(
+                    _SequenceMatcher(None, candidate, e).ratio() * 100 >= threshold_100
+                    for e in result
+                )
+            if is_dup:
                 continue
             result.append(candidate)
         return result

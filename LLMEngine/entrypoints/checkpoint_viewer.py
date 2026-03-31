@@ -1,7 +1,10 @@
 """체크포인트 파일에서 분석 결과를 LLM 호출 없이 확인하는 뷰어.
 
+IRepository 인터페이스를 통해 JSON/SQLite 양쪽 저장소를 지원한다.
+
 사용법:
   python -m LLMEngine.entrypoints.checkpoint_viewer [--checkpoint CHECKPOINT_FILE] [--all]
+  python -m LLMEngine.entrypoints.checkpoint_viewer --repo sqlite       # SQLite 저장소 사용
   python -m LLMEngine.entrypoints.checkpoint_viewer                     # 미완료 체크포인트 자동 탐색
   python -m LLMEngine.entrypoints.checkpoint_viewer --all               # 모든 체크포인트 요약
   python -m LLMEngine.entrypoints.checkpoint_viewer --checkpoint checkpoints/260205_03_checkpoint.json
@@ -16,6 +19,17 @@ import sys
 from collections import defaultdict
 from functools import reduce
 from pathlib import Path
+
+from LLMEngine.core.ports import IRepository
+
+
+def _make_repository(repo_type: str, cp_dir: str = "./checkpoints") -> IRepository:
+    """CLI --repo 인자에 따라 저장소 인스턴스를 생성한다."""
+    if repo_type == "sqlite":
+        from LLMEngine.infrastructure.persistence.sqlite_repo import SQLiteRepository
+        return SQLiteRepository(db_path=str(Path(cp_dir) / "checkpoints.db"))
+    from LLMEngine.infrastructure.persistence.json_repo import LocalJsonRepository
+    return LocalJsonRepository(base_dir=cp_dir)
 
 
 def load_checkpoint(path: Path) -> dict:
@@ -248,18 +262,74 @@ def find_incomplete_checkpoints(cp_dir: Path, out_dir: Path) -> list[Path]:
     return incomplete
 
 
+def summarize_from_repo(repo: IRepository, lecture_id: str) -> None:
+    """IRepository를 통해 체크포인트 결과를 요약 출력한다."""
+    from LLMEngine.core.schemas import ChunkResult
+    results = repo.get_completed_chunks(lecture_id)
+    if not results:
+        print(f"  [{lecture_id}] 성공한 청크가 없습니다.")
+        return
+
+    print(f"\n{'='*70}")
+    print(f"  {lecture_id} (via IRepository)")
+    print(f"{'='*70}")
+    print(f"  성공 청크: {len(results)}")
+
+    item_scores: dict[str, list[int]] = defaultdict(list)
+    for r in results:
+        for cat, items in r.scores.model_dump().items():
+            if not isinstance(items, dict):
+                continue
+            for item_name, val in items.items():
+                if val is not None:
+                    item_scores[item_name].append(val)
+
+    categories = {
+        "강의 구조 (lecture_structure)": [
+            "learning_objective_intro", "previous_lesson_linkage",
+            "explanation_sequence", "key_point_emphasis", "closing_summary",
+        ],
+        "개념 명확성 (concept_clarity)": [
+            "concept_definition", "analogy_example_usage", "prerequisite_check",
+        ],
+        "실습 연계 (practice_linkage)": [
+            "example_appropriateness", "practice_transition", "error_handling",
+        ],
+        "상호작용 (interaction)": [
+            "participation_induction", "question_response_sufficiency",
+        ],
+    }
+    for cat_label, items in categories.items():
+        print(f"\n  [{cat_label}]")
+        for item in items:
+            vals = item_scores.get(item, [])
+            if not vals:
+                print(f"    {item:.<40s} N/A")
+            else:
+                avg = sum(vals) / len(vals)
+                print(f"    {item:.<40s} 평균 {avg:.1f}  (n={len(vals)})")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="체크포인트 결과 뷰어")
     parser.add_argument("--checkpoint", "-c", type=str, help="특정 체크포인트 파일 경로")
     parser.add_argument("--all", "-a", action="store_true", help="모든 체크포인트 요약")
     parser.add_argument("--verbose", "-v", action="store_true", help="상세 출력 (청크별 상태, evidence 샘플)")
     parser.add_argument("--export", "-e", action="store_true", help="미완료 체크포인트를 output JSON으로 내보내기 (LLM 호출 없음)")
+    parser.add_argument("--repo", choices=["json", "sqlite"], default="json",
+                        help="저장소 유형 (json: 파일 기반, sqlite: DB 기반)")
     parser.add_argument("--checkpoint-dir", type=str, default="./checkpoints")
     parser.add_argument("--output-dir", type=str, default="./output")
+    parser.add_argument("--lecture-id", type=str, help="SQLite 사용 시 특정 lecture_id 조회")
     args = parser.parse_args()
 
     cp_dir = Path(args.checkpoint_dir)
     out_dir = Path(args.output_dir)
+
+    if args.repo == "sqlite" and args.lecture_id:
+        repo = _make_repository("sqlite", args.checkpoint_dir)
+        summarize_from_repo(repo, args.lecture_id)
+        return
 
     if args.export:
         if not cp_dir.exists():

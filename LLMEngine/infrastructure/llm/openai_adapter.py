@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Any, Tuple
+from typing import Any, Tuple, TYPE_CHECKING
 
-from LLMEngine.infrastructure.llm.base_adapter import BaseLLMAdapter, RefusalError
+from LLMEngine.infrastructure.llm.base_adapter import BaseLLMAdapter
+from LLMEngine.infrastructure.llm.types import OpenAICompletionResponse
+from LLMEngine.core.exceptions import RefusalError, TruncatedResponseError
 from LLMEngine.core.schemas import ChunkMetadata, LLMInternalResponse, RefinedList
-from LLMEngine.application.prompts import (
-    SYSTEM_PROMPT, build_user_prompt, AGGREGATOR_SYSTEM_PROMPT,
-)
+
+if TYPE_CHECKING:
+    from openai import OpenAI as _OpenAI, AsyncOpenAI as _AsyncOpenAI
 
 try:
     from openai import OpenAI, AsyncOpenAI, RateLimitError, AuthenticationError
@@ -35,15 +36,22 @@ class OpenAIAdapter(BaseLLMAdapter):
         retry_base_delay: float = 1.0,
         api_key: str | None = None,
         api_timeout_s: float = 120.0,
+        max_completion_tokens: int = 2500,
+        temperature: float = 1.0,
+        seed: int | None = None,
     ) -> None:
         super().__init__(
             model=model, dedup_model=dedup_model,
             max_retries=max_retries, retry_base_delay=retry_base_delay,
             api_timeout_s=api_timeout_s,
+            temperature=temperature,
+            seed=seed,
         )
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        self._client: Any | None = None
-        self._async_client: Any | None = None
+        self.max_completion_tokens = max_completion_tokens
+        from LLMEngine.core.secrets import get_secret
+        self.api_key = api_key or get_secret("OPENAI_API_KEY")
+        self._client: _OpenAI | None = None
+        self._async_client: _AsyncOpenAI | None = None
 
     def _validate_sdk(self) -> None:
         if OpenAI is None:
@@ -68,46 +76,79 @@ class OpenAIAdapter(BaseLLMAdapter):
             await self._async_client.close()
             self._async_client = None
         if self._client is not None:
-            self._client.close()
+            if hasattr(self._client, "close"):
+                self._client.close()
             self._client = None
 
     # ── Hooks ────────────────────────────────────────────────────────
 
-    def _call_chunk_sync(self, chunk_data: ChunkMetadata) -> Any:
-        return self._ensure_client().beta.chat.completions.parse(
-            model=self.model,
+    def _build_chat_kwargs(
+        self, *, model: str, system: str, user: str,
+        response_format: Any, max_tokens: int | None = None,
+        timeout: bool = True,
+    ) -> dict[str, Any]:
+        kwargs: dict[str, Any] = dict(
+            model=model,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": build_user_prompt(chunk_data, total_chunks=chunk_data.total_chunks)},
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
             ],
-            response_format=LLMInternalResponse,
-            timeout=self.api_timeout_s,
+            response_format=response_format,
+            temperature=self.temperature,
         )
+        if max_tokens is not None:
+            kwargs["max_completion_tokens"] = max_tokens
+        if timeout:
+            kwargs["timeout"] = self.api_timeout_s
+        if self.seed is not None:
+            kwargs["seed"] = self.seed
+        return kwargs
+
+    def _call_chunk_sync(self, chunk_data: ChunkMetadata) -> Any:
+        from LLMEngine.application.prompts import SYSTEM_PROMPT, build_user_prompt
+        kwargs = self._build_chat_kwargs(
+            model=self.model, system=SYSTEM_PROMPT,
+            user=build_user_prompt(chunk_data, total_chunks=chunk_data.total_chunks),
+            response_format=LLMInternalResponse,
+            max_tokens=self.max_completion_tokens,
+        )
+        return self._ensure_client().beta.chat.completions.parse(**kwargs)
 
     async def _call_chunk_async(self, chunk_data: ChunkMetadata) -> Any:
-        client = self._ensure_async_client()
+        from LLMEngine.application.prompts import SYSTEM_PROMPT, build_user_prompt
+        kwargs = self._build_chat_kwargs(
+            model=self.model, system=SYSTEM_PROMPT,
+            user=build_user_prompt(chunk_data, total_chunks=chunk_data.total_chunks),
+            response_format=LLMInternalResponse,
+            max_tokens=self.max_completion_tokens, timeout=False,
+        )
         return await asyncio.wait_for(
-            client.beta.chat.completions.parse(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": build_user_prompt(chunk_data, total_chunks=chunk_data.total_chunks)},
-                ],
-                response_format=LLMInternalResponse,
-            ),
+            self._ensure_async_client().beta.chat.completions.parse(**kwargs),
             timeout=self.api_timeout_s,
         )
 
-    def _parse_structured_response(self, completion: Any) -> LLMInternalResponse:
-        if not getattr(completion, "choices", None):
-            raise RuntimeError("OpenAI 응답에 choices가 없습니다.")
-        message = completion.choices[0].message
+    @staticmethod
+    def _extract_parsed(response: Any, *, check_truncation: bool = False, label: str = "") -> Any:
+        """choices → refusal → parsed 공통 검증."""
+        prefix = f"{label} " if label else ""
+        if not getattr(response, "choices", None):
+            raise RuntimeError(f"{prefix}OpenAI 응답에 choices가 없습니다.")
+        choice = response.choices[0]
+        if check_truncation and getattr(choice, "finish_reason", None) == "length":
+            raise TruncatedResponseError(
+                "응답이 max_completion_tokens에 도달하여 잘렸습니다. "
+                "max_completion_tokens 증가가 필요합니다."
+            )
+        message = choice.message
         if getattr(message, "refusal", None):
-            raise RefusalError(f"모델 거부: {message.refusal}")
+            raise RefusalError(f"{prefix}모델 거부: {message.refusal}")
         parsed = getattr(message, "parsed", None)
         if parsed is None:
-            raise RuntimeError("구조화 출력 파싱 결과가 비어 있습니다.")
+            raise RuntimeError(f"{prefix}구조화 출력 파싱 결과가 비어 있습니다.")
         return parsed
+
+    def _parse_structured_response(self, completion: Any) -> LLMInternalResponse:
+        return self._extract_parsed(completion, check_truncation=True)
 
     def _extract_usage(self, response: Any) -> Tuple[int, int, int]:
         usage = getattr(response, "usage", None)
@@ -130,15 +171,12 @@ class OpenAIAdapter(BaseLLMAdapter):
         return False
 
     def _call_aggregate_sync(self, user_content: str) -> Any:
-        return self._ensure_client().beta.chat.completions.parse(
-            model=self.dedup_model,
-            messages=[
-                {"role": "system", "content": AGGREGATOR_SYSTEM_PROMPT},
-                {"role": "user", "content": user_content},
-            ],
-            response_format=RefinedList,
-            timeout=self.api_timeout_s,
+        from LLMEngine.application.prompts import AGGREGATOR_SYSTEM_PROMPT
+        kwargs = self._build_chat_kwargs(
+            model=self.dedup_model, system=AGGREGATOR_SYSTEM_PROMPT,
+            user=user_content, response_format=RefinedList,
         )
+        return self._ensure_client().beta.chat.completions.parse(**kwargs)
 
     def _parse_aggregate_response(self, response: Any) -> RefinedList:
-        return response.choices[0].message.parsed
+        return self._extract_parsed(response, label="Aggregate")
