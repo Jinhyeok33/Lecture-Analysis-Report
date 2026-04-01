@@ -1,21 +1,27 @@
-"""여러 강의 스크립트 파일을 배치 처리하는 모듈 (Entrypoint)."""
+"""Batch entrypoint for processing one or more lecture transcripts."""
 
 from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import os
 import sys
+import time
+from decimal import Decimal
+from pathlib import Path
+from typing import Dict
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-import time
-from pathlib import Path
-from typing import Dict
-
 from src.common.naming import lecture_id_from_transcript_path, llm_chunks_json_path, llm_json_path
-from src.llm_engine.core.schemas import ChunkResult
 from src.llm_engine.application.analyzer_service import LectureAnalyzerService
+from src.llm_engine.core.config import LLMEngineConfig
+from src.llm_engine.core.logging_config import set_trace_id
+from src.llm_engine.core.schemas import AggregatedResult, ChunkResult
+
+logger = logging.getLogger(__name__)
 
 
 class BatchProcessor:
@@ -27,54 +33,88 @@ class BatchProcessor:
         transcript_files: list[str | Path],
         output_dir: str | Path,
         continue_on_error: bool = True,
-        max_concurrency: int = 1,
+        max_concurrency: int | None = None,
     ) -> Dict[str, dict]:
+        if max_concurrency is None:
+            max_concurrency = self.service.config.max_concurrency
+
         results: Dict[str, dict] = {}
         errors: Dict[str, str] = {}
         out_path = Path(output_dir)
         out_path.mkdir(parents=True, exist_ok=True)
-
-        batch_start_time = time.perf_counter()
+        batch_started = time.perf_counter()
 
         for file_path in transcript_files:
             path = Path(file_path)
             lecture_id = lecture_id_from_transcript_path(path)
+            trace_id = set_trace_id()
+            file_started = time.perf_counter()
 
             chunk_file = llm_chunks_json_path(out_path, lecture_id)
             aggregated_file = llm_json_path(out_path, lecture_id)
 
-            # 이미 있으면 재사용
+            logger.info(
+                "stage=start file=%s lecture_id=%s trace_id=%s",
+                path.name,
+                lecture_id,
+                trace_id,
+            )
+
             if aggregated_file.exists():
                 try:
                     cached_agg = json.loads(aggregated_file.read_text(encoding="utf-8-sig"))
-                    cached_chunks = []
+                    cached_chunks: list[ChunkResult] = []
                     if chunk_file.exists():
                         raw_chunks = json.loads(chunk_file.read_text(encoding="utf-8-sig"))
-                        cached_chunks = [ChunkResult.model_validate(x) for x in raw_chunks]
+                        cached_chunks = [ChunkResult.model_validate(item) for item in raw_chunks]
 
-                    print(f"재사용: {lecture_id} -> {aggregated_file.name}")
                     results[lecture_id] = {
                         "chunk_results": cached_chunks,
                         "aggregated_result": cached_agg,
                         "chunk_file": str(chunk_file),
                         "aggregated_file": str(aggregated_file),
                     }
+                    logger.info(
+                        "stage=cache_hit file=%s lecture_id=%s aggregated=%s",
+                        path.name,
+                        lecture_id,
+                        aggregated_file.name,
+                    )
                     continue
                 except Exception as exc:
-                    print(f"기존 파일 재사용 실패, 재생성 진행: {lecture_id} ({exc})")
+                    logger.warning(
+                        "stage=cache_reload_failed file=%s lecture_id=%s msg=%s",
+                        path.name,
+                        lecture_id,
+                        exc,
+                    )
 
-            file_start_time = time.perf_counter()
             try:
-                print(f"시작: {lecture_id} (파일: {path.name})")
-
                 chunk_results, aggregated_result = self.service.process_lecture(
-                    lecture_id, path, max_concurrency=max_concurrency
+                    lecture_id,
+                    path,
+                    max_concurrency=max_concurrency,
                 )
 
+                file_elapsed_ms = int((time.perf_counter() - file_started) * 1000)
+                aggregated_result.run_metadata.total_elapsed_ms = file_elapsed_ms
                 self.service.save_files(chunk_results, aggregated_result, out_path, lecture_id)
 
-                file_elapsed = time.perf_counter() - file_start_time
-                print(f"완료: {lecture_id} | 청크 {len(chunk_results)}개 처리 | 소요 시간: {file_elapsed:.2f}초")
+                meta = aggregated_result.run_metadata
+                logger.info(
+                    "stage=done file=%s lecture_id=%s chunks=%d success=%d fallback=%d failed=%d "
+                    "elapsed_ms=%d tokens=%d cost=%s reliability=%.4f",
+                    path.name,
+                    lecture_id,
+                    meta.total_chunks,
+                    meta.successful_chunks,
+                    meta.fallback_chunks,
+                    meta.failed_chunks,
+                    file_elapsed_ms,
+                    meta.token_usage.total_tokens,
+                    str(meta.token_usage.estimated_cost_usd),
+                    meta.reliability.overall_reliability_score,
+                )
 
                 results[lecture_id] = {
                     "chunk_results": chunk_results,
@@ -82,41 +122,44 @@ class BatchProcessor:
                     "chunk_file": str(chunk_file),
                     "aggregated_file": str(aggregated_file),
                 }
-
             except Exception as exc:
-                file_elapsed = time.perf_counter() - file_start_time
-                error_type = type(exc).__name__
-                error_msg = str(exc)
-
+                elapsed_ms = int((time.perf_counter() - file_started) * 1000)
+                message = f"{type(exc).__name__}: {exc}"
                 if hasattr(exc, "__cause__") and exc.__cause__:
                     cause = exc.__cause__
-                    error_msg = f"{error_msg} (caused by: {type(cause).__name__}: {str(cause)[:200]})"
-
-                errors[lecture_id] = f"{error_type}: {error_msg}"
+                    message += f" (caused by: {type(cause).__name__}: {str(cause)[:200]})"
+                errors[lecture_id] = message
 
                 if continue_on_error:
-                    print(f"오류 ({file_elapsed:.2f}초): {lecture_id} - {error_type}: {error_msg[:150]}")
-                    if len(error_msg) > 150:
-                        print("   ... (생략)")
-                    print("   다음 파일로 계속 진행합니다...")
+                    logger.error(
+                        "stage=error file=%s lecture_id=%s elapsed_ms=%d msg=%s",
+                        path.name,
+                        lecture_id,
+                        elapsed_ms,
+                        message,
+                    )
                 else:
-                    raise RuntimeError(
-                        f"처리 실패 {lecture_id}: {error_type}: {error_msg}"
-                    ) from exc
+                    raise RuntimeError(f"처리 실패 {lecture_id}: {message}") from exc
 
-        batch_elapsed = time.perf_counter() - batch_start_time
-        total = len(transcript_files)
-        print(f"\n[배치 처리 요약] 총 {total}건 중 {len(results)}건 성공, {len(errors)}건 실패")
-        print(
-            f"총 소요 시간: {batch_elapsed:.2f}초 (평균 {batch_elapsed / total:.2f}초/건)"
-            if total
-            else "총 소요 시간: 0.00초"
+        total_tokens = 0
+        total_cost = Decimal("0")
+        for entry in results.values():
+            aggregated = entry.get("aggregated_result")
+            if isinstance(aggregated, AggregatedResult):
+                total_tokens += aggregated.run_metadata.token_usage.total_tokens
+                total_cost += aggregated.run_metadata.token_usage.estimated_cost_usd
+
+        logger.info(
+            "stage=batch_done total=%d success=%d failed=%d elapsed_ms=%d tokens=%d cost=%s",
+            len(transcript_files),
+            len(results),
+            len(errors),
+            int((time.perf_counter() - batch_started) * 1000),
+            total_tokens,
+            f"{total_cost:.6f}",
         )
-
-        if errors:
-            print(f"\n{len(errors)}개 파일 처리 실패:")
-            for lecture_id, error_msg in errors.items():
-                print(f"   - {lecture_id}: {error_msg}")
+        for lecture_id, message in errors.items():
+            logger.warning("stage=batch_error lecture_id=%s msg=%s", lecture_id, message)
 
         return results
 
@@ -132,6 +175,7 @@ class BatchProcessor:
                 return candidate.resolve()
             current = current.parent
 
+        logger.warning("stage=resolve_directory_missing path=%s", directory)
         return directory
 
     def process_directory(
@@ -140,11 +184,13 @@ class BatchProcessor:
         output_dir: str | Path,
         pattern: str = "*.txt",
         continue_on_error: bool = True,
-        max_concurrency: int = 1,
+        max_concurrency: int | None = None,
         latest_only: bool = False,
     ) -> Dict[str, dict]:
-        directory = self._resolve_directory(transcript_dir)
+        if max_concurrency is None:
+            max_concurrency = self.service.config.max_concurrency
 
+        directory = self._resolve_directory(transcript_dir)
         if not directory.exists():
             raise FileNotFoundError(f"스크립트 폴더를 찾을 수 없습니다: {directory}")
 
@@ -153,9 +199,8 @@ class BatchProcessor:
             raise FileNotFoundError(f"'{pattern}' 패턴에 맞는 스크립트 파일이 없습니다: {directory}")
 
         if latest_only:
-            latest_file = max(files, key=lambda f: f.stat().st_mtime)
-            print(f"최신 문서 모드: {latest_file.name} 1건만 분석합니다.")
-            files = [latest_file]
+            files = [max(files, key=lambda path: path.stat().st_mtime)]
+            logger.info("stage=latest_only file=%s", files[0].name)
 
         return self.process_files(
             transcript_files=files,
@@ -167,29 +212,71 @@ class BatchProcessor:
 
 if __name__ == "__main__":
     import argparse
-    from src.llm_engine.infrastructure.llm.openai_adapter import OpenAIAdapter
-    from src.llm_engine.infrastructure.persistence.json_repo import LocalJsonRepository
+
+    from src.llm_engine.core.logging_config import setup_logging
+
+    use_json = os.getenv("LLM_LOG_FORMAT", "").strip().lower() == "json"
+    setup_logging(level=os.getenv("LLM_LOG_LEVEL", "INFO"), json_format=use_json)
 
     parser = argparse.ArgumentParser(description="강의 스크립트 배치 처리기")
     parser.add_argument("--input", "-i", type=str, default="data/raw", help="스크립트 폴더 경로")
-    parser.add_argument("--output", "-o", type=str, default="data/outputs/llm", help="결과 저장 폴더 경로")
-    parser.add_argument("--max_concurrency", "-c", type=int, default=3, help="동시 처리 청크 수")
-    parser.add_argument("--file", "-f", type=str, help="특정 파일 하나만 처리할 경우 해당 파일의 경로 입력")
-    parser.add_argument("--latest", "-l", action="store_true", help="지정된 폴더에서 가장 최신 스크립트 1개만 처리")
-
+    parser.add_argument("--output", "-o", type=str, default="data/outputs/llm", help="결과 출력 폴더 경로")
+    parser.add_argument("--max_concurrency", "-c", type=int, default=1, help="동시 처리 청크 수")
+    parser.add_argument("--file", "-f", type=str, help="특정 파일 하나만 처리할 때 사용할 경로")
+    parser.add_argument("--latest", "-l", action="store_true", help="지정 폴더에서 가장 최신 스크립트 1건만 처리")
+    parser.add_argument(
+        "--repo",
+        choices=["json", "sqlite"],
+        default="json",
+        help="체크포인트 저장소 유형",
+    )
     args = parser.parse_args()
 
-    llm_provider = OpenAIAdapter()
-    repository = LocalJsonRepository()
-    service = LectureAnalyzerService(llm_provider, repository)
+    config = LLMEngineConfig.from_env()
+    backend = os.getenv("LLM_BACKEND", "").strip().lower()
+    has_gemini = bool(os.getenv("GEMINI_API_KEY", "").strip())
+    has_openai = bool(os.getenv("OPENAI_API_KEY", "").strip())
+
+    if backend == "gemini" or (has_gemini and not has_openai):
+        from src.llm_engine.infrastructure.llm.gemini_adapter import GeminiAdapter
+
+        llm_provider = GeminiAdapter(
+            max_retries=config.max_retries,
+            retry_base_delay=config.retry_base_delay,
+            api_timeout_s=config.api_timeout_s,
+            max_completion_tokens=config.max_completion_tokens,
+            temperature=config.temperature,
+        )
+    else:
+        from src.llm_engine.infrastructure.llm.openai_adapter import OpenAIAdapter
+
+        llm_provider = OpenAIAdapter(
+            model=config.model,
+            max_retries=config.max_retries,
+            retry_base_delay=config.retry_base_delay,
+            api_timeout_s=config.api_timeout_s,
+            max_completion_tokens=config.max_completion_tokens,
+            temperature=config.temperature,
+            seed=config.seed,
+        )
+
+    if args.repo == "sqlite":
+        from src.llm_engine.infrastructure.persistence.sqlite_repo import SQLiteRepository
+
+        repository = SQLiteRepository(db_path="./checkpoints/checkpoints.db")
+    else:
+        from src.llm_engine.infrastructure.persistence.json_repo import LocalJsonRepository
+
+        repository = LocalJsonRepository()
+
+    service = LectureAnalyzerService(llm_provider, repository, config=config)
     processor = BatchProcessor(service)
 
     try:
         if args.file:
             file_path = Path(args.file).resolve()
             if not file_path.exists():
-                raise FileNotFoundError(f"지정된 파일을 찾을 수 없습니다: {file_path}")
-            print(f"단일 파일 지정: {file_path.name}")
+                raise FileNotFoundError(f"지정한 파일을 찾을 수 없습니다: {file_path}")
             processor.process_files([file_path], args.output, max_concurrency=args.max_concurrency)
         else:
             processor.process_directory(
@@ -198,7 +285,11 @@ if __name__ == "__main__":
                 max_concurrency=args.max_concurrency,
                 latest_only=args.latest,
             )
-    except Exception as e:
-        print(f"\n실행 오류: {e}")
-
-
+    except Exception as exc:
+        logger.exception("stage=fatal %s: %s", type(exc).__name__, exc)
+    finally:
+        if hasattr(llm_provider, "close"):
+            try:
+                asyncio.run(llm_provider.close())
+            except (RuntimeError, Exception):
+                pass

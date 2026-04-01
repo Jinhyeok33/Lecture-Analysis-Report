@@ -148,21 +148,56 @@ def run_nlp(paths: PipelinePaths) -> Path:
 
 def run_llm(paths: PipelinePaths, max_concurrency: int, continue_on_error: bool) -> Path:
     from src.llm_engine.application.analyzer_service import LectureAnalyzerService
+    from src.llm_engine.core.config import LLMEngineConfig
     from src.llm_engine.entrypoints.batch_processor import BatchProcessor
-    from src.llm_engine.infrastructure.llm.openai_adapter import OpenAIAdapter
-    from src.llm_engine.infrastructure.persistence.json_repo import LocalJsonRepository
 
     if not paths.transcript.exists():
         raise FileNotFoundError(f"Transcript not found: {paths.transcript}")
-    if not os.getenv("OPENAI_API_KEY"):
+    if not (os.getenv("OPENAI_API_KEY") or os.getenv("GEMINI_API_KEY")):
         raise RuntimeError("OPENAI_API_KEY is not set; cannot run LLM stage")
 
     lecture_id = lecture_id_from_transcript_path(paths.transcript)
     out = llm_json_path(paths.llm_output_dir, lecture_id)
 
-    provider = OpenAIAdapter()
-    repository = LocalJsonRepository(base_dir=str(paths.repo_root / "checkpoints"))
-    service = LectureAnalyzerService(provider, repository)
+    config = LLMEngineConfig.from_env()
+    backend = os.getenv("LLM_BACKEND", "").strip().lower()
+    has_gemini = bool(os.getenv("GEMINI_API_KEY", "").strip())
+    has_openai = bool(os.getenv("OPENAI_API_KEY", "").strip())
+
+    if backend == "gemini" or (has_gemini and not has_openai):
+        from src.llm_engine.infrastructure.llm.gemini_adapter import GeminiAdapter
+
+        provider = GeminiAdapter(
+            max_retries=config.max_retries,
+            retry_base_delay=config.retry_base_delay,
+            api_timeout_s=config.api_timeout_s,
+            max_completion_tokens=config.max_completion_tokens,
+            temperature=config.temperature,
+        )
+    else:
+        from src.llm_engine.infrastructure.llm.openai_adapter import OpenAIAdapter
+
+        provider = OpenAIAdapter(
+            model=config.model,
+            max_retries=config.max_retries,
+            retry_base_delay=config.retry_base_delay,
+            api_timeout_s=config.api_timeout_s,
+            max_completion_tokens=config.max_completion_tokens,
+            temperature=config.temperature,
+            seed=config.seed,
+        )
+
+    repo_kind = os.getenv("LLM_CHECKPOINT_REPO", "json").strip().lower()
+    if repo_kind == "sqlite":
+        from src.llm_engine.infrastructure.persistence.sqlite_repo import SQLiteRepository
+
+        repository = SQLiteRepository(db_path=paths.repo_root / "checkpoints" / "checkpoints.db")
+    else:
+        from src.llm_engine.infrastructure.persistence.json_repo import LocalJsonRepository
+
+        repository = LocalJsonRepository(base_dir=str(paths.repo_root / "checkpoints"))
+
+    service = LectureAnalyzerService(provider, repository, config=config)
     processor = BatchProcessor(service)
 
     print(f"[llm] analyze {paths.transcript.name}")

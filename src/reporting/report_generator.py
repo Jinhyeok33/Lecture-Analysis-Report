@@ -77,6 +77,19 @@ CATEGORY_LABELS = {
     "interaction": "상호작용",
 }
 
+UNIFIED_CATEGORY_ORDER = [
+    "language_quality",
+    "lecture_structure",
+    "concept_clarity",
+    "practice_linkage",
+    "interaction",
+]
+
+UNIFIED_CATEGORY_LABELS = {
+    "language_quality": "언어 품질 분석",
+    **CATEGORY_LABELS,
+}
+
 SUBITEM_LABELS = {
     "learning_objective_intro": "학습 목표 안내",
     "previous_lesson_linkage": "이전 수업 연계",
@@ -107,6 +120,20 @@ SUBITEM_DESCRIPTIONS = {
     "error_handling": "오류 대응 설명과 내용 정리를 확인합니다.",
     "participation_induction": "참여 유도 질문과 응답 내용을 확인합니다.",
     "question_response_sufficiency": "질문 응답 내용과 충분성을 확인합니다.",
+}
+
+NLP_ITEM_LABELS = {
+    "repeat_ratio": "반복 표현 비율",
+    "sentence_completion": "문장 완결률",
+    "speech_rate_wpm": "발화 속도",
+    "understanding_question_count": "이해 확인 질문",
+}
+
+NLP_ITEM_DESCRIPTIONS = {
+    "repeat_ratio": "반복 표현 빈도를 바탕으로 전달 안정성을 확인합니다.",
+    "sentence_completion": "문장이 끝까지 완결되는 비율을 바탕으로 명료성을 확인합니다.",
+    "speech_rate_wpm": "강의 진행 속도가 적절한 범위에 있는지 확인합니다.",
+    "understanding_question_count": "수강생 이해를 확인하는 질문 시도를 점검합니다.",
 }
 
 
@@ -359,6 +386,144 @@ def flatten_scores(summary_scores: dict[str, dict[str, float]]) -> list[dict[str
     return rows
 
 
+def average_defined(values: list[float | None]) -> float:
+    valid = [value for value in values if value is not None]
+    if not valid:
+        return 0.0
+    return round(sum(valid) / len(valid), 2)
+
+
+def score_repeat_ratio(repeat_ratio: float) -> float:
+    if repeat_ratio <= 0.03:
+        return 5.0
+    if repeat_ratio <= 0.06:
+        return 4.0
+    if repeat_ratio <= 0.10:
+        return 3.0
+    if repeat_ratio <= 0.15:
+        return 2.0
+    return 1.0
+
+
+def score_completion_ratio(complete_ratio: float) -> float:
+    if complete_ratio >= 0.95:
+        return 5.0
+    if complete_ratio >= 0.90:
+        return 4.0
+    if complete_ratio >= 0.85:
+        return 3.0
+    if complete_ratio >= 0.75:
+        return 2.0
+    return 1.0
+
+
+def score_speech_rate(speech_rate: float) -> float:
+    if 140 <= speech_rate <= 180:
+        return 5.0
+    if 120 <= speech_rate < 140 or 181 <= speech_rate <= 200:
+        return 4.0
+    if 100 <= speech_rate < 120 or 201 <= speech_rate <= 220:
+        return 3.0
+    if 80 <= speech_rate < 100 or 221 <= speech_rate <= 240:
+        return 2.0
+    return 1.0
+
+
+def score_question_count(question_count: int) -> float:
+    if question_count >= 4:
+        return 5.0
+    if question_count == 3:
+        return 4.0
+    if question_count == 2:
+        return 3.0
+    if question_count == 1:
+        return 2.0
+    return 1.0
+
+
+def build_evaluation_groups(analysis: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, float], float]:
+    language = analysis.get("language_quality", {})
+    concept_metrics = analysis.get("concept_clarity_metrics", {})
+    interaction_metrics = analysis.get("interaction_metrics", {})
+    summary_scores = analysis.get("summary_scores", {})
+
+    if not any([language, concept_metrics, interaction_metrics, summary_scores]):
+        return [], {}, 0.0
+
+    repeat_ratio = as_float(language.get("repeat_ratio", 0.0))
+    complete_ratio = max(0.0, 1.0 - as_float(language.get("incomplete_sentence_ratio", 0.0)))
+    speech_rate = as_float(concept_metrics.get("speech_rate_wpm", 0.0))
+    question_count = int(as_float(interaction_metrics.get("understanding_question_count", 0.0)))
+
+    groups: list[dict[str, Any]] = []
+
+    language_rows = [
+        {
+            "item": NLP_ITEM_LABELS["repeat_ratio"],
+            "description": NLP_ITEM_DESCRIPTIONS["repeat_ratio"],
+            "score": score_repeat_ratio(repeat_ratio),
+            "summary": f"{pct(repeat_ratio)} · {score_grade(score_repeat_ratio(repeat_ratio))}",
+        },
+        {
+            "item": NLP_ITEM_LABELS["sentence_completion"],
+            "description": NLP_ITEM_DESCRIPTIONS["sentence_completion"],
+            "score": score_completion_ratio(complete_ratio),
+            "summary": f"{pct(complete_ratio)} · {score_grade(score_completion_ratio(complete_ratio))}",
+        },
+        {
+            "item": NLP_ITEM_LABELS["speech_rate_wpm"],
+            "description": NLP_ITEM_DESCRIPTIONS["speech_rate_wpm"],
+            "score": score_speech_rate(speech_rate),
+            "summary": f"{int(speech_rate)}단어/분 · {score_grade(score_speech_rate(speech_rate))}",
+        },
+    ]
+    groups.append(
+        {
+            "category_key": "language_quality",
+            "category": UNIFIED_CATEGORY_LABELS["language_quality"],
+            "rows": language_rows,
+        }
+    )
+
+    interaction_extra_row = {
+        "item": NLP_ITEM_LABELS["understanding_question_count"],
+        "description": NLP_ITEM_DESCRIPTIONS["understanding_question_count"],
+        "score": score_question_count(question_count),
+        "summary": f"{question_count}회 · {score_grade(score_question_count(question_count))}",
+    }
+
+    for category_key in CATEGORY_ORDER:
+        rows: list[dict[str, Any]] = []
+        if category_key == "interaction":
+            rows.append(interaction_extra_row)
+
+        for item_key, raw_value in summary_scores.get(category_key, {}).items():
+            score = None if raw_value is None else as_float(raw_value)
+            rows.append(
+                {
+                    "item": SUBITEM_LABELS.get(item_key, item_key),
+                    "description": SUBITEM_DESCRIPTIONS.get(item_key, "설명 없음"),
+                    "score": score,
+                    "summary": score_grade(score) if score is not None else "해당 없음",
+                }
+            )
+
+        groups.append(
+            {
+                "category_key": category_key,
+                "category": UNIFIED_CATEGORY_LABELS.get(category_key, category_key),
+                "rows": rows,
+            }
+        )
+
+    category_scores = {
+        group["category_key"]: average_defined([row["score"] for row in group["rows"]])
+        for group in groups
+    }
+    overall = overall_score(category_scores)
+    return groups, category_scores, overall
+
+
 def make_styles(reg: str, bold: str, quote_font: str) -> dict[str, ParagraphStyle]:
     def ps(name: str, **kwargs: Any) -> ParagraphStyle:
         return ParagraphStyle(name, **kwargs)
@@ -484,8 +649,8 @@ def make_styles(reg: str, bold: str, quote_font: str) -> dict[str, ParagraphStyl
         "metric_label": ps(
             "MetricLabel",
             fontName=reg,
-            fontSize=9,
-            leading=12,
+            fontSize=8.4,
+            leading=11,
             textColor=C_MUTED,
             alignment=TA_CENTER,
             wordWrap="CJK",
@@ -493,8 +658,8 @@ def make_styles(reg: str, bold: str, quote_font: str) -> dict[str, ParagraphStyl
         "metric_value": ps(
             "MetricValue",
             fontName=bold,
-            fontSize=21,
-            leading=26,
+            fontSize=15.2,
+            leading=18.5,
             textColor=C_PRIMARY,
             alignment=TA_CENTER,
             wordWrap="CJK",
@@ -502,8 +667,8 @@ def make_styles(reg: str, bold: str, quote_font: str) -> dict[str, ParagraphStyl
         "metric_help": ps(
             "MetricHelp",
             fontName=reg,
-            fontSize=8.5,
-            leading=12,
+            fontSize=7.9,
+            leading=10.5,
             textColor=C_MUTED,
             alignment=TA_CENTER,
             wordWrap="CJK",
@@ -613,12 +778,12 @@ def metric_card(
             [
                 ("BACKGROUND", (0, 0), (-1, -1), bg),
                 ("BOX", (0, 0), (-1, -1), 0.8, C_BORDER),
-                ("TOPPADDING", (0, 0), (-1, 0), 9),
+                ("TOPPADDING", (0, 0), (-1, 0), 8),
                 ("BOTTOMPADDING", (0, 0), (-1, 0), 2),
                 ("TOPPADDING", (0, 1), (-1, 1), 2),
                 ("BOTTOMPADDING", (0, 1), (-1, 1), 2),
                 ("TOPPADDING", (0, 2), (-1, 2), 2),
-                ("BOTTOMPADDING", (0, 2), (-1, 2), 8),
+                ("BOTTOMPADDING", (0, 2), (-1, 2), 7),
                 ("LEFTPADDING", (0, 0), (-1, -1), 6),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 6),
             ]
@@ -942,7 +1107,7 @@ def build_language_section(analysis: dict[str, Any], styles: dict[str, Paragraph
     concept = analysis.get("concept_clarity_metrics", {})
     interaction = analysis.get("interaction_metrics", {})
 
-    story.append(section_header("1. 언어 표현 품질 분석", "반복 표현, 문장 완결성, 화법 비율을 기반으로 전달 품질을 진단합니다.", styles, width))
+    story.append(section_header("2. 언어 표현 품질 분석", "반복 표현, 문장 완결성, 화법 비율을 기반으로 전달 품질을 상세하게 진단합니다.", styles, width))
     story.append(Spacer(1, 0.25 * cm))
 
     repeat_ratio = as_float(language.get("repeat_ratio", 0.0))
@@ -1040,45 +1205,60 @@ def build_language_section(analysis: dict[str, Any], styles: dict[str, Paragraph
 def build_scores_section(analysis: dict[str, Any], styles: dict[str, ParagraphStyle], width: float) -> list:
     story: list = []
 
-    summary_scores = analysis.get("summary_scores", {})
-    if not summary_scores:
+    groups, category_scores, overall = build_evaluation_groups(analysis)
+    if not groups:
         return story
-
-    cat_avgs = category_averages(summary_scores)
-    overall = overall_score(cat_avgs)
 
     story.append(
         section_header(
-            "2. 종합 점수 분석",
-            "항목 점수와 종합 점수를 함께 확인합니다.",
+            "1. 종합 평가 항목",
+            "5개 카테고리 기준으로 항목, 설명, 점수, 요약을 한눈에 정리합니다.",
             styles,
             width,
         )
     )
-    story.append(Spacer(1, 0.28 * cm))
+    story.append(Spacer(1, 0.30 * cm))
+
+    valid_category_scores = [(key, value) for key, value in category_scores.items() if value > 0]
+    best_key, best_score = max(valid_category_scores, key=lambda item: item[1]) if valid_category_scores else ("language_quality", 0.0)
+    weakest_key, weakest_score = min(valid_category_scores, key=lambda item: item[1]) if valid_category_scores else ("language_quality", 0.0)
 
     top_cards = [
-        metric_card("종합 점수", f"{overall:.2f}", f"등급: {score_grade(overall)}", styles, (width - 0.6 * cm) / 2),
-        metric_card("항목 점수", f"{overall - 3.0:+.2f}", "기준점(3.00) 대비", styles, (width - 0.6 * cm) / 2, C_SURFACE_ALT),
+        metric_card("종합 점수", f"{overall:.2f}", f"등급: {score_grade(overall)}", styles, (width - 1.2 * cm) / 3),
+        metric_card(
+            "최고 카테고리",
+            UNIFIED_CATEGORY_LABELS.get(best_key, best_key),
+            f"{best_score:.2f}점 · {score_grade(best_score)}",
+            styles,
+            (width - 1.2 * cm) / 3,
+            C_SURFACE_ALT,
+        ),
+        metric_card(
+            "개선 우선",
+            UNIFIED_CATEGORY_LABELS.get(weakest_key, weakest_key),
+            f"{weakest_score:.2f}점 · {score_grade(weakest_score)}",
+            styles,
+            (width - 1.2 * cm) / 3,
+            C_SURFACE,
+        ),
     ]
-    top_tbl = Table([top_cards], colWidths=[(width - 0.6 * cm) / 2, (width - 0.6 * cm) / 2])
+    top_tbl = Table([top_cards], colWidths=[(width - 1.2 * cm) / 3] * 3)
     top_tbl.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
     story.append(top_tbl)
-    story.append(Spacer(1, 0.25 * cm))
+    story.append(Spacer(1, 0.32 * cm))
 
-    radar = chart_radar(cat_avgs)
     cat_rows = [
         [
-            Paragraph("항목", styles["table_header"]),
-            Paragraph("점수", styles["table_header"]),
-            Paragraph("내용", styles["table_header"]),
+            Paragraph("카테고리", styles["table_header"]),
+            Paragraph("평균 점수", styles["table_header"]),
+            Paragraph("요약", styles["table_header"]),
         ]
     ]
-    for key in CATEGORY_ORDER:
-        value = cat_avgs.get(key, 0.0)
+    for key in UNIFIED_CATEGORY_ORDER:
+        value = category_scores.get(key, 0.0)
         cat_rows.append(
             [
-                Paragraph(CATEGORY_LABELS.get(key, key), styles["table_cell"]),
+                Paragraph(UNIFIED_CATEGORY_LABELS.get(key, key), styles["table_cell"]),
                 Paragraph(
                     f"{value:.2f}",
                     ParagraphStyle(
@@ -1107,8 +1287,8 @@ def build_scores_section(analysis: dict[str, Any], styles: dict[str, ParagraphSt
                     ("BACKGROUND", (0, 0), (-1, 0), C_ACCENT),
                     ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, C_SURFACE]),
                     ("GRID", (0, 0), (-1, -1), 0.7, C_BORDER),
-                    ("TOPPADDING", (0, 0), (-1, -1), 6),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
                     ("LEFTPADDING", (0, 0), (-1, -1), 6),
                     ("RIGHTPADDING", (0, 0), (-1, -1), 6),
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -1117,57 +1297,101 @@ def build_scores_section(analysis: dict[str, Any], styles: dict[str, ParagraphSt
         )
         return table
 
-    if radar:
-        right_width = width * 0.40
-        cat_table = _styled_cat_table(right_width)
-        radar_img = fit_image(radar, width * 0.57, 8.2 * cm)
-        radar_layout = Table([[radar_img, cat_table]], colWidths=[width * 0.60, right_width])
-        radar_layout.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
-        story.append(KeepTogether([radar_layout]))
-    else:
-        story.append(_styled_cat_table(width * 0.64))
+    story.append(_styled_cat_table(width))
+    story.append(Spacer(1, 0.34 * cm))
 
-    story.append(Spacer(1, 0.24 * cm))
-    story.append(Paragraph("항목 점수", styles["title"]))
+    category_title_style = ParagraphStyle(
+        "CategoryTitle",
+        parent=styles["title"],
+        fontSize=9.4,
+        leading=12.2,
+        textColor=C_WHITE,
+    )
+    category_meta_style = ParagraphStyle(
+        "CategoryMeta",
+        parent=styles["table_center"],
+        fontSize=8.2,
+        leading=11,
+        textColor=C_WHITE,
+        alignment=TA_RIGHT,
+    )
 
-    subitem_chart = chart_subitem_scores(summary_scores)
-    if subitem_chart:
-        story.append(fit_image(subitem_chart, width, 9.6 * cm))
-
-    rows = flatten_scores(summary_scores)
-    if rows:
-        # split tables away from charts to prevent clipping
-        story.append(PageBreak())
-        story.append(
-            section_header(
-                "2-1. 항목 점수",
-                "항목 점수와 항목 설명을 함께 확인합니다.",
-                styles,
-                width,
+    def category_header(label: str, avg_score: float) -> Table:
+        table = Table(
+            [[Paragraph(esc(label), category_title_style), Paragraph(esc(f"평균 {avg_score:.2f}점 · {score_grade(avg_score)}"), category_meta_style)]],
+            colWidths=[width * 0.68, width * 0.32],
+        )
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), C_PRIMARY),
+                    ("TOPPADDING", (0, 0), (-1, -1), 8),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ]
             )
         )
-        story.append(Spacer(1, 0.2 * cm))
+        return table
+
+    def append_group_block(group: dict[str, Any], add_top_gap: bool = False) -> None:
+        rows = group["rows"]
+        if not rows:
+            return
+        if add_top_gap:
+            story.append(Spacer(1, 0.10 * cm))
+        group_story: list = [
+            category_header(group["category"], category_scores.get(group["category_key"], 0.0)),
+            Spacer(1, 0.18 * cm),
+        ]
 
         detail_rows = [
             [
                 Paragraph("항목", styles["table_header"]),
-                Paragraph("내용", styles["table_header"]),
+                Paragraph("설명", styles["table_header"]),
                 Paragraph("점수", styles["table_header"]),
                 Paragraph("요약", styles["table_header"]),
             ]
         ]
         for row in rows:
             score = row["score"]
+            if score is None:
+                score_cell = Paragraph("-", styles["table_center"])
+                summary_cell = Paragraph("해당 없음", styles["table_center"])
+            else:
+                score_cell = Paragraph(
+                    f"{score:.1f}",
+                    ParagraphStyle(
+                        "score_num",
+                        parent=styles["table_number"],
+                        textColor=colors.HexColor(score_color_hex(score)),
+                    ),
+                )
+                summary_cell = Paragraph(
+                    esc(row["summary"]),
+                    ParagraphStyle(
+                        "score_summary",
+                        parent=styles["table_center"],
+                        textColor=colors.HexColor(score_color_hex(score)),
+                    ),
+                )
+
             detail_rows.append(
                 [
-                    Paragraph(esc(row["category"]), styles["table_cell"]),
                     Paragraph(esc(row["item"]), styles["table_cell"]),
-                    Paragraph(f"{score:.1f}", ParagraphStyle("td_num", parent=styles["table_number"], textColor=colors.HexColor(score_color_hex(score)))),
-                    Paragraph(score_grade(score), ParagraphStyle("td_grade", parent=styles["table_center"], textColor=colors.HexColor(score_color_hex(score)))),
+                    Paragraph(esc(row["description"]), styles["table_cell"]),
+                    score_cell,
+                    summary_cell,
                 ]
             )
 
-        detail_table = Table(detail_rows, colWidths=[width * 0.20, width * 0.44, width * 0.12, width * 0.24], repeatRows=1, splitByRow=1)
+        detail_table = Table(
+            detail_rows,
+            colWidths=[width * 0.22, width * 0.46, width * 0.10, width * 0.22],
+            repeatRows=1,
+            splitByRow=1,
+        )
         detail_table.setStyle(
             TableStyle(
                 [
@@ -1176,53 +1400,42 @@ def build_scores_section(analysis: dict[str, Any], styles: dict[str, ParagraphSt
                     ("GRID", (0, 0), (-1, -1), 0.7, C_BORDER),
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
                     ("TOPPADDING", (0, 0), (-1, -1), 6),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
                     ("LEFTPADDING", (0, 0), (-1, -1), 5),
                     ("RIGHTPADDING", (0, 0), (-1, -1), 5),
                 ]
             )
         )
-        story.append(detail_table)
+        group_story.append(detail_table)
 
-        story.append(PageBreak())
-        story.append(
-            section_header(
-                "2-2. 항목 설명",
-                "세부 평가 항목의 의미를 확인하고 다음 수업 액션을 정리합니다.",
-                styles,
-                width,
-            )
-        )
-        story.append(Spacer(1, 0.2 * cm))
-        story.append(Paragraph("항목 설명", styles["title"]))
-        story.append(Paragraph("설명을 확인하고 다음 수업 액션을 정리합니다.", styles["small"]))
-        story.append(Spacer(1, 0.1 * cm))
-
-        guide_rows = [[Paragraph("항목", styles["table_header"]), Paragraph("설명", styles["table_header"])]]
-        for row in rows:
-            guide_rows.append(
-                [
-                    Paragraph(esc(row["item"]), styles["table_cell"]),
-                    Paragraph(esc(SUBITEM_DESCRIPTIONS.get(row["item_key"], "설명 없음")), styles["table_cell"]),
-                ]
-            )
-
-        guide_table = Table(guide_rows, colWidths=[width * 0.29, width * 0.71], repeatRows=1, splitByRow=1)
-        guide_table.setStyle(
+        group_box = Table([[group_story]], colWidths=[width], splitByRow=1)
+        group_box.setStyle(
             TableStyle(
                 [
-                    ("BACKGROUND", (0, 0), (-1, 0), C_ACCENT),
-                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, C_SURFACE_ALT]),
-                    ("GRID", (0, 0), (-1, -1), 0.7, C_BORDER),
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("TOPPADDING", (0, 0), (-1, -1), 6),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.white),
+                    ("BOX", (0, 0), (-1, -1), 0.9, C_BORDER),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
                 ]
             )
         )
-        story.append(guide_table)
+        story.append(KeepTogether([group_box, Spacer(1, 0.24 * cm)]))
+
+    first_page_keys = {"language_quality", "lecture_structure"}
+    first_page_groups = [group for group in groups if group["category_key"] in first_page_keys]
+    remaining_groups = [group for group in groups if group["category_key"] not in first_page_keys]
+
+    for idx, group in enumerate(first_page_groups):
+        append_group_block(group, add_top_gap=idx > 0)
+
+    if remaining_groups:
+        story.append(PageBreak())
+        for idx, group in enumerate(remaining_groups):
+            append_group_block(group, add_top_gap=idx > 0)
+
+    story.append(PageBreak())
 
     return story
 
@@ -1408,9 +1621,8 @@ def generate_report(analysis_json_path: str, output_pdf_path: str) -> None:
 
     story: list = []
     story.extend(build_cover(data, analysis, styles, doc.width))
-    story.extend(build_language_section(analysis, styles, doc.width))
     story.extend(build_scores_section(analysis, styles, doc.width))
-    story.append(PageBreak())
+    story.extend(build_language_section(analysis, styles, doc.width))
     story.extend(build_insight_section(analysis, styles, doc.width))
 
     cb = page_callback(reg_font)
