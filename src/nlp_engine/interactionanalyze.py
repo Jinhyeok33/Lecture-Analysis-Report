@@ -3,10 +3,9 @@ from datetime import datetime, timedelta
 from kiwipiepy import Kiwi
 
 class InteractionAnalyzer:
-    def __init__(self, kiwi=None, min_threshold=3):
+    def __init__(self, kiwi=None):
         # 외부에서 넘겨받은 kiwi 사용
         self.kiwi = kiwi
-        self.min_threshold = min_threshold
         # 핵심 어근 세트 (형태소 분석기의 token.form 형태에 맞추어 하나에 담는 방식에서 품사별로)
         # 💡 개선점 1: 품사(POS)별로 타겟 어간을 분리하여 정확도 향상
         # 명사형 (NNG, NNP 등)
@@ -108,13 +107,19 @@ class InteractionAnalyzer:
         # 시간 계산 및 0 나누기 방지
         effective_duration_hours = max(effective_duration_seconds / 3600, 0.001)
         total_questions = len(interactions_effective_times)
+         
+        
+        if (total_questions / effective_duration_hours) > 10 :
+            question_count_score = 5
+        else: question_count_score = 4
         
         return {
             "interaction_metrics": {
                 "understanding_question_count": total_questions,
-            #    "effective_duration_hours": round(effective_duration_hours, 3), # 유효 시간 표기
-            #    "questions_per_hour": round(total_questions / effective_duration_hours, 2),
-            #    "is_sufficient": (total_questions / effective_duration_hours) >= self.min_threshold
+                "effective_duration_hours": round(effective_duration_hours, 3), # 유효 시간 표기
+                "questions_per_hour": round(total_questions / effective_duration_hours, 2),
+                #"is_sufficient": (total_questions / effective_duration_hours) >= self.min_threshold,
+                "question_count_score": question_count_score
             },
             #"distribution": distribution
         }

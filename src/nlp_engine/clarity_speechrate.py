@@ -8,11 +8,11 @@ class SpeechRateAnalyzer:
         # 평가 기준 설정
         self.thresholds = [
             (0, "silent", 0), 
-            (50, "very_low", 3),
-            (100, "very_low", 3), 
-            (130, "low", 4), 
-            (160, "optimal", 5),
-            (180, "high", 4), 
+            (30, "very_low", 2),
+            (50, "low", 3), 
+            (80, "normal", 4), 
+            (120, "optimal", 5),
+            (160, "high", 4), 
             (200, "very_high", 3), 
             (float('inf'), "excessive", 2)
         ]
@@ -84,6 +84,6 @@ class SpeechRateAnalyzer:
                 "effective_duration_sec": round(effective_sec),
                 "speech_rate_wpm": wpm,
                 "classification": classification,
-                "score": score
+                "speech_rate_score": score
             }
         }

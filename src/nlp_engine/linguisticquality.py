@@ -60,7 +60,7 @@ class LanguageQualityAnalyzer:
 
             
             # --- Informal (비격식체/해라체/반말/혼잣말) ---
-            # 기본 종결
+            # [개선 반영] 기본 종결 ('다'는 혼잣말일 경우 informal, 객관적 설명조일 경우 코드에서 formal로 동적 판별됨)
             "다": "informal", "어": "informal", "아": "informal", "여": "informal", "야": "informal",
             
             # 의문
@@ -99,7 +99,6 @@ class LanguageQualityAnalyzer:
             clean_line = pattern.sub("", line).strip()
             cleaned_lines.append(clean_line)
         return "\n".join(cleaned_lines)
-
 
     def analyze(self, text: str, file_name: str = "input_text") -> dict:
         """텍스트를 분석하여 언어 품질(중복 표현, 문장 스타일, 완성도) 결과를 반환합니다."""
@@ -183,23 +182,34 @@ class LanguageQualityAnalyzer:
 
             found_ef = None
             has_yo = "" # 존댓말 보조사 '요'를 임시 저장할 변수
+            ef_token_idx = -1 # [개선 반영] 앞선 토큰(형태소)을 확인하기 위한 인덱스 변수
 
-            for token in reversed(analysis_result):
-                # [수정 1] Kiwi가 반환하는 특수 종성 자모(ᆸ, ᆯ, ᆫ)를 일반 호환 자모(ㅂ, ㄹ, ㄴ)로 변환
-                # (유니코드 \u11b8 = ᆸ, \u11af = ᆯ, \u11ab = ᆫ)
+            # [보완 2] 탐색 무시 및 탐색 중단 로직 구현
+            # [개선 반영] 인덱스를 활용하기 위해 reversed() 대신 리스트의 range 역순 탐색 사용
+            for i in range(len(analysis_result) - 1, -1, -1):
+                token = analysis_result[i]
+                
+                # Kiwi가 반환하는 특수 종성 자모(ᆸ, ᆯ, ᆫ)를 일반 호환 자모(ㅂ, ㄹ, ㄴ)로 변환
                 normalized_form = token.form.replace('\u11b8', 'ㅂ').replace('\u11af', 'ㄹ').replace('\u11ab', 'ㄴ')
 
-                # EF(종결 어미) 태그 발견 시, 뒤에 떨어져 있던 '요'(has_yo)가 있다면 결합
-                if token.tag == 'EF': 
+                if token.tag == 'EF': # 종결 어미 태그 탐색
                     found_ef = normalized_form + has_yo
+                    ef_token_idx = i # 어미의 위치 저장
                     break
-
-                # 탐색 무시 및 탐색 중단 로직 구현
+                
+                """
+                기존 코드                
+                # 의미 없는 기호나 서술격 조사는 건너뜀
+                # 핵심: EF를 찾기 전까지는 계속 탐색하되, 
+                # 일반 명사(NNG)나 동사 어간(VV)을 만나버리면 종결어미가 없다고 판단하고 중단할 수도 있음
+                if token.tag in ['VCP', 'VCN', 'SF']: 
+                    continue
+                """
                 # 문장 끝에 붙을 수 있는 마침표(SF), 쉼표(SP), 인용부호(SS)는 패스하고 계속 탐색
                 if token.tag in ['SF', 'SP', 'SS']: 
                     continue
-
-                # [수정 4] 구어체 존댓말 보조사(JX) '요'를 정상적으로 캐치하여 임시 저장
+                
+                # 구어체 존댓말 캐치: 보조사 '요'(JX)를 만나면 기억해둠
                 if token.tag == 'JX':
                     if token.form == '요':
                         has_yo = "요"
@@ -207,7 +217,9 @@ class LanguageQualityAnalyzer:
 
                 # [보완 3] 종결어미(EF)뿐만 아니라 연결어미(EC)도 문장 끝에 오면 어미로 인정
                 if token.tag == 'EC':
+                    # 예: '고'(EC) + '요'(JX) -> "고요" 조립
                     found_ef = normalized_form + has_yo
+                    ef_token_idx = i # 어미의 위치 저장
                     break
 
                 # 명사(NNG)나 동사 어간(VV) 등을 만나면 종결어미가 없는 것으로 간주
@@ -216,15 +228,81 @@ class LanguageQualityAnalyzer:
             # 스타일 판별 및 완성 문장 카운트
             if found_ef in self.ENDING_DICT:
                 complete_count += 1
-                if self.ENDING_DICT[found_ef] == "formal":
-                    formal_count += 1
+                
+                # [개선 반영: 전문성 중심 평가] 
+                # '-다' 어미의 선별적 격식(Formal) 인정 로직
+                # 강사가 개념을 설명하거나 객관적 사실을 전달하는 평서형 문어체는 formal로 간주합니다.
+                if found_ef == "다":
+                    is_academic_da = False
+                    if ef_token_idx > 0:
+                        prev_token = analysis_result[ef_token_idx - 1]
+                        # 1. 서술격 조사(~이다), 부정 지정사(~아니다)
+                        # 2. 선어말어미(~는다, ~ㄴ다, ~었다, ~겠다 등)
+                        # 3. 존재사(~있다, ~없다)
+                        # 위 품사 뒤에 붙은 '다'는 혼잣말이 아니라 명확한 객관적 설명조입니다.
+                        if prev_token.tag in ['VCP', 'VCN', 'EP'] or prev_token.form in ['있', '없']:
+                            is_academic_da = True
+                    
+                    if is_academic_da:
+                        formal_count += 1
+                    else:
+                        informal_count += 1
                 else:
-                    informal_count += 1
+                    # '다'가 아닌 나머지 어미들은 사전에 정의된 대로 처리
+                    if self.ENDING_DICT[found_ef] == "formal":
+                        formal_count += 1
+                    else:
+                        informal_count += 1
         
         # 최종 지표 계산
-        completeness_ratio = complete_count / total_sentences
-        formal_ratio = round(formal_count / total_sentences, 3)
-        informal_ratio = round(informal_count / total_sentences, 3)
+        completeness_ratio = complete_count / total_sentences if total_sentences > 0 else 0
+
+        # 화법 비율은 '화법이 분류된 문장(formal+informal)' 기준으로 계산해야
+        # 미완결/파편 문장이 많아도 실제 격식체 비율이 과소추정되지 않음
+        style_total = formal_count + informal_count
+        if style_total > 0:
+            formal_ratio = round(formal_count / style_total, 3)
+            informal_ratio = round(informal_count / style_total, 3)
+        else:
+            formal_ratio = 0
+            informal_ratio = 0
+
+        # 불필요한 반복표현에 기반한 언어 정제도 점수 (1~5점)
+        if repeat_density < 0.1:
+            linguistic_quality_score = 5
+        elif repeat_density < 0.2:
+            linguistic_quality_score = 4
+        elif repeat_density < 0.3:
+            linguistic_quality_score = 3
+        elif repeat_density < 0.4:
+            linguistic_quality_score = 2
+        else:
+            linguistic_quality_score = 1
+
+        # 불완전한 문장 비율에 따른 발화완결성 점수 (1~5점)
+        if completeness_ratio >= 0.90:
+            utterance_completeness_score = 5
+        elif 0.80 <= completeness_ratio < 0.90:
+            utterance_completeness_score = 4
+        elif 0.70 <= completeness_ratio < 0.80:
+            utterance_completeness_score = 3
+        elif 0.60 <= completeness_ratio < 0.70:
+            utterance_completeness_score = 2
+        else:
+            utterance_completeness_score = 1
+
+        # 격식/비격식 표현의 언어일관성 점수
+        if formal_ratio/(formal_ratio + informal_ratio) >= 0.90:
+            linguistic_consistency_score = 5
+        elif 0.80 <= formal_ratio/(formal_ratio + informal_ratio) < 0.90:
+            linguistic_consistency_score = 4
+        elif 0.70 <= formal_ratio/(formal_ratio + informal_ratio) < 0.80:
+            linguistic_consistency_score = 3
+        elif 0.60 <= formal_ratio/(formal_ratio + informal_ratio) < 0.70:
+            linguistic_consistency_score = 2
+        else:
+            linguistic_consistency_score = 1
+
 
         # --- 4. 결과 통합 ---
         return {
@@ -240,6 +318,9 @@ class LanguageQualityAnalyzer:
                 "speech_style_ratio": {
                     "formal": formal_ratio,
                     "informal": informal_ratio
-                }
+                },
+                "linguistic_quality_score": linguistic_quality_score,
+                "utterance_completeness_score": utterance_completeness_score,
+                "linguistic_consistency_score": linguistic_consistency_score
             }
         }
