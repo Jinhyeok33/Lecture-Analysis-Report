@@ -1,5 +1,3 @@
-
-https://github.com/user-attachments/assets/0ea5a78a-fd61-4ae7-9326-817bf7b5cdce
 # 🤖 EduInsight AI
 
 
