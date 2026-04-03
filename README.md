@@ -1,4 +1,12 @@
+
+https://github.com/user-attachments/assets/0ea5a78a-fd61-4ae7-9326-817bf7b5cdce
 # 🤖 EduInsight AI
+
+
+https://github.com/user-attachments/assets/1b0e7e18-822f-4a4a-952d-6619284a203b
+
+
+
 
 강의 스크립트를 기반으로 강의 품질을 분석하고, 웹 대시보드와 PDF 리포트로 결과를 제공하는 서비스형 분석 프로젝트입니다.
 
